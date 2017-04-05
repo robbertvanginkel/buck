@@ -62,7 +62,7 @@ import org.immutables.value.Value;
 
 @Value.Immutable
 @BuckStyleTuple
-abstract class AbstractPrebuiltCxxLibraryGroupDescription
+public abstract class AbstractPrebuiltCxxLibraryGroupDescription
     implements Description<PrebuiltCxxLibraryGroupDescriptionArg>,
         VersionPropagator<PrebuiltCxxLibraryGroupDescriptionArg> {
 
@@ -99,7 +99,7 @@ abstract class AbstractPrebuiltCxxLibraryGroupDescription
    * @return the link args formed from the user-provided static link line after resolving library
    *     macro references.
    */
-  private Iterable<Arg> getStaticLinkArgs(
+  public Iterable<Arg> getStaticLinkArgs(
       BuildTarget target, ImmutableList<SourcePath> libs, ImmutableList<String> args) {
     ImmutableList.Builder<Arg> builder = ImmutableList.builder();
     for (String arg : args) {
@@ -349,7 +349,7 @@ abstract class AbstractPrebuiltCxxLibraryGroupDescription
 
   @BuckStyleImmutable
   @Value.Immutable
-  interface AbstractPrebuiltCxxLibraryGroupDescriptionArg
+  public interface AbstractPrebuiltCxxLibraryGroupDescriptionArg
       extends CommonDescriptionArg, HasDeclaredDeps {
     ImmutableList<String> getExportedPreprocessorFlags();
 
