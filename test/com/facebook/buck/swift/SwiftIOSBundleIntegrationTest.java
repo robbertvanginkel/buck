@@ -36,12 +36,12 @@ import com.facebook.buck.testutil.integration.ProjectWorkspace;
 import com.facebook.buck.testutil.integration.TemporaryPaths;
 import com.facebook.buck.testutil.integration.TestDataHelper;
 import com.facebook.buck.util.environment.Platform;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import org.hamcrest.CoreMatchers;
 import org.junit.Rule;
 import org.junit.Test;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 public class SwiftIOSBundleIntegrationTest {
   @Rule public TemporaryPaths tmp = new TemporaryPaths();
@@ -270,30 +270,5 @@ public class SwiftIOSBundleIntegrationTest {
     assertThat(
         workspace.runCommand("nm", binaryOutput.toString()).getStdout().orElse(""),
         containsString("baz"));
-  }
-
-  @Test
-  public void swiftDependsOnObjCRunsAndPrintsMessage() throws Exception {
-    assumeThat(
-        AppleNativeIntegrationTestUtils.isSwiftAvailable(ApplePlatform.IPHONESIMULATOR), is(true));
-    ProjectWorkspace workspace =
-        TestDataHelper.createProjectWorkspaceForScenario(this, "swift_on_objc", tmp);
-    workspace.setUp();
-    ProjectFilesystem filesystem = new ProjectFilesystem(workspace.getDestPath());
-
-    BuildTarget target = workspace.newBuildTarget("//:binary#iphonesimulator-x86_64");
-    workspace.runBuckCommand("build", target.getFullyQualifiedName()).assertSuccess();
-
-    target = workspace.newBuildTarget("//:bundle#iphonesimulator-x86_64,no-debug");
-    workspace.runBuckCommand("build", target.getFullyQualifiedName()).assertSuccess();
-
-    Path appPath =
-        workspace.getPath(
-            BuildTargets.getGenPath(
-                    filesystem,
-                    target.withAppendedFlavors(AppleDescriptions.NO_INCLUDE_FRAMEWORKS_FLAVOR),
-                    "%s")
-                .resolve(target.getShortName() + ".app"));
-    assertTrue(Files.exists(appPath.resolve(target.getShortName())));
   }
 }

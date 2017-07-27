@@ -74,6 +74,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Multimaps;
 import com.google.common.collect.Sets;
+import org.immutables.value.Value;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -83,7 +84,6 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
-import org.immutables.value.Value;
 
 public class CxxLibraryDescription
     implements Description<CxxLibraryDescriptionArg>,

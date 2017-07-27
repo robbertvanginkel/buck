@@ -70,10 +70,10 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
+import org.immutables.value.Value;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.Set;
-import org.immutables.value.Value;
 
 public class AppleTestDescription
     implements Description<AppleTestDescriptionArg>,
@@ -230,7 +230,6 @@ public class AppleTestDescription
             .withAppendedFlavors(LinkerMapMode.NO_LINKER_MAP.getFlavor());
     BuildRule library =
         createTestLibraryRule(
-            targetGraph,
             projectFilesystem,
             params,
             resolver,
@@ -362,7 +361,6 @@ public class AppleTestDescription
   }
 
   private BuildRule createTestLibraryRule(
-      TargetGraph targetGraph,
       ProjectFilesystem projectFilesystem,
       BuildRuleParams params,
       BuildRuleResolver resolver,
@@ -383,7 +381,6 @@ public class AppleTestDescription
     } else {
       library =
           appleLibraryDescription.createLibraryBuildRule(
-              targetGraph,
               libraryTarget,
               projectFilesystem,
               params,
