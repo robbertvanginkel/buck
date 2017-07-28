@@ -16,8 +16,6 @@
 
 package com.facebook.buck.apple;
 
-import static com.facebook.buck.swift.SwiftLibraryDescription.isSwiftTarget;
-
 import com.facebook.buck.cxx.CxxBinaryDescription;
 import com.facebook.buck.cxx.CxxBinaryDescriptionArg;
 import com.facebook.buck.cxx.CxxCompilationDatabase;
@@ -182,8 +180,7 @@ public class AppleBinaryDescription
       return createBundleBuildRule(
           targetGraph, buildTarget, projectFilesystem, params, resolver, args);
     } else {
-      return createBinaryBuildRule(
-          targetGraph, buildTarget, projectFilesystem, params, resolver, cellRoots, args);
+      return createBinaryBuildRule(buildTarget, projectFilesystem, params, resolver, cellRoots, args);
     }
   }
 
@@ -199,7 +196,6 @@ public class AppleBinaryDescription
   }
 
   private BuildRule createBinaryBuildRule(
-      TargetGraph targetGraph,
       BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
       BuildRuleParams params,
@@ -214,7 +210,6 @@ public class AppleBinaryDescription
 
     BuildRule unstrippedBinaryRule =
         createBinary(
-            targetGraph,
             unstrippedBinaryBuildTarget,
             projectFilesystem,
             params,
@@ -224,7 +219,6 @@ public class AppleBinaryDescription
 
     if (shouldWrapIntoAppleDebuggableBinary(buildTarget, unstrippedBinaryRule)) {
       return createAppleDebuggableBinary(
-          targetGraph,
           buildTarget,
           projectFilesystem,
           params,
@@ -239,7 +233,6 @@ public class AppleBinaryDescription
   }
 
   private BuildRule createAppleDebuggableBinary(
-      TargetGraph targetGraph,
       BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
       BuildRuleParams params,
@@ -256,7 +249,6 @@ public class AppleBinaryDescription
                 .orElse(StripStyle.NON_GLOBAL_SYMBOLS.getFlavor()));
     BuildRule strippedBinaryRule =
         createBinary(
-            targetGraph,
             strippedBinaryBuildTarget,
             projectFilesystem,
             params,
@@ -338,7 +330,6 @@ public class AppleBinaryDescription
   }
 
   private BuildRule createBinary(
-      TargetGraph targetGraph,
       BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
       BuildRuleParams params,
@@ -355,8 +346,7 @@ public class AppleBinaryDescription
     if (fatBinaryInfo.isPresent()) {
       if (shouldUseStubBinary(buildTarget)) {
         BuildTarget thinTarget = Iterables.getFirst(fatBinaryInfo.get().getThinTargets(), null);
-        return requireThinBinary(
-            targetGraph, thinTarget, projectFilesystem, params, resolver, cellRoots, args);
+        return requireThinBinary(thinTarget, projectFilesystem, params, resolver, cellRoots, args);
       }
 
       ImmutableSortedSet.Builder<BuildRule> thinRules = ImmutableSortedSet.naturalOrder();
@@ -367,21 +357,18 @@ public class AppleBinaryDescription
           continue;
         }
         BuildRule thinRule =
-            requireThinBinary(
-                targetGraph, thinTarget, projectFilesystem, params, resolver, cellRoots, args);
+            requireThinBinary(thinTarget, projectFilesystem, params, resolver, cellRoots, args);
         resolver.addToIndex(thinRule);
         thinRules.add(thinRule);
       }
       return MultiarchFileInfos.requireMultiarchRule(
           buildTarget, projectFilesystem, params, resolver, fatBinaryInfo.get(), thinRules.build());
     } else {
-      return requireThinBinary(
-          targetGraph, buildTarget, projectFilesystem, params, resolver, cellRoots, args);
+      return requireThinBinary(buildTarget, projectFilesystem, params, resolver, cellRoots, args);
     }
   }
 
   private BuildRule requireThinBinary(
-      TargetGraph targetGraph,
       BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
       BuildRuleParams params,
@@ -394,19 +381,6 @@ public class AppleBinaryDescription
     }
 
     ImmutableSortedSet.Builder<BuildTarget> extraCxxDepsBuilder = ImmutableSortedSet.naturalOrder();
-    Optional<BuildRule> swiftCompanionBuildRule =
-        swiftDelegate.createCompanionBuildRule(
-            targetGraph, buildTarget, projectFilesystem, params, resolver, cellRoots, args);
-    if (swiftCompanionBuildRule.isPresent()) {
-      // when creating a swift target, there is no need to proceed with apple binary rules,
-      // otherwise, add this swift rule as a dependency.
-      if (isSwiftTarget(buildTarget)) {
-        return swiftCompanionBuildRule.get();
-      } else {
-        extraCxxDepsBuilder.add(swiftCompanionBuildRule.get().getBuildTarget());
-        params = params.copyAppendingExtraDeps(ImmutableSet.of(swiftCompanionBuildRule.get()));
-      }
-    }
     ImmutableSortedSet<BuildTarget> extraCxxDeps = extraCxxDepsBuilder.build();
 
     SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);

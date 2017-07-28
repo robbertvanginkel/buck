@@ -54,7 +54,6 @@ import com.facebook.buck.rules.SourcePath;
 import com.facebook.buck.rules.TargetGraph;
 import com.facebook.buck.step.Step;
 import com.facebook.buck.step.fs.MakeCleanDirectoryStep;
-import com.facebook.buck.swift.SwiftLibraryDescription;
 import com.facebook.buck.util.HumanReadableException;
 import com.facebook.buck.util.Optionals;
 import com.facebook.buck.util.immutables.BuckStyleImmutable;
@@ -239,7 +238,7 @@ public class AppleTestDescription
             testHostInfo.map(TestHostInfo::getBlacklist).orElse(ImmutableSet.of()),
             libraryTarget,
             Optionals.toStream(args.getTestHostApp()).toImmutableSortedSet(Ordering.natural()));
-    if (!createBundle || SwiftLibraryDescription.isSwiftTarget(libraryTarget)) {
+    if (!createBundle) {
       return library;
     }
 

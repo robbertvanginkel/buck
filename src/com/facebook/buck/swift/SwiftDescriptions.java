@@ -16,18 +16,12 @@
 
 package com.facebook.buck.swift;
 
-import static com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable.Linkage.STATIC;
-import static com.facebook.buck.swift.SwiftLibraryDescription.SWIFT_COMPANION_FLAVOR;
-
-import com.facebook.buck.cxx.CxxLibraryDescription;
 import com.facebook.buck.io.MorePaths;
-import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.rules.SourcePath;
 import com.facebook.buck.rules.SourcePathResolver;
 import com.facebook.buck.rules.SourceWithFlags;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
-import java.util.Optional;
 
 public class SwiftDescriptions {
 
@@ -48,31 +42,6 @@ public class SwiftDescriptions {
       }
     }
     return swiftSrcsBuilder.build();
-  }
-
-  static void populateSwiftLibraryDescriptionArg(
-      final SourcePathResolver sourcePathResolver,
-      SwiftLibraryDescriptionArg.Builder output,
-      final CxxLibraryDescription.CommonArg args,
-      BuildTarget buildTarget) {
-
-    output.setName(args.getName());
-    output.setSrcs(filterSwiftSources(sourcePathResolver, args.getSrcs()));
-    if (args instanceof SwiftCommonArg) {
-      output.setCompilerFlags(((SwiftCommonArg) args).getSwiftCompilerFlags());
-      output.setVersion(((SwiftCommonArg) args).getSwiftVersion());
-    } else {
-      output.setCompilerFlags(args.getCompilerFlags());
-    }
-    output.setFrameworks(args.getFrameworks());
-    output.setLibraries(args.getLibraries());
-    output.setDeps(args.getDeps());
-    output.setSupportedPlatformsRegex(args.getSupportedPlatformsRegex());
-    output.setEnableObjcInterop(true);
-
-    boolean isCompanionTarget = buildTarget.getFlavors().contains(SWIFT_COMPANION_FLAVOR);
-    output.setPreferredLinkage(
-        isCompanionTarget ? Optional.of(STATIC) : args.getPreferredLinkage());
   }
 
   static String toSwiftHeaderName(String moduleName) {

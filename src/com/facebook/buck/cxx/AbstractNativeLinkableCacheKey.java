@@ -18,11 +18,11 @@ package com.facebook.buck.cxx;
 
 import com.facebook.buck.cxx.toolchain.linker.Linker;
 import com.facebook.buck.model.Flavor;
-import com.facebook.buck.util.immutables.BuckStylePackageVisibleTuple;
+import com.facebook.buck.util.immutables.BuckStyleTuple;
 import org.immutables.value.Value;
 
 @Value.Immutable
-@BuckStylePackageVisibleTuple
+@BuckStyleTuple
 abstract class AbstractNativeLinkableCacheKey {
   public abstract Flavor getFlavor();
 
