@@ -1279,13 +1279,6 @@ public class CxxLibraryDescription
       return true;
     }
 
-    /**
-     * These fields are passed through to SwiftLibrary for mixed C/Swift targets; they are not used
-     * otherwise.
-     */
-    Optional<SourcePath> getBridgingHeader();
-
-    Optional<String> getModuleName();
 
     /** @return C/C++ deps which are propagated to dependents. */
     @Value.Derived

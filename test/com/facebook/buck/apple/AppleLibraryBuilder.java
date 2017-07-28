@@ -186,11 +186,6 @@ public class AppleLibraryBuilder
     return this;
   }
 
-  public AppleLibraryBuilder setBridgingHeader(Optional<SourcePath> bridgingHeader) {
-    getArgForPopulating().setBridgingHeader(bridgingHeader);
-    return this;
-  }
-
   public AppleLibraryBuilder setPreferredLinkage(NativeLinkable.Linkage linkage) {
     getArgForPopulating().setPreferredLinkage(Optional.of(linkage));
     return this;

@@ -132,6 +132,11 @@ import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Ordering;
 import com.google.common.io.ByteStreams;
+import org.hamcrest.Matchers;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -148,11 +153,6 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import org.hamcrest.Matchers;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
 
 public class ProjectGeneratorTest {
 
@@ -4399,39 +4399,6 @@ public class ProjectGeneratorTest {
     assertThat(target.getBuildPhases().size(), Matchers.equalTo(1));
   }
 
-  @Test
-  public void testGeneratedProjectStructureAndSettingsWithBridgingHeader() throws IOException {
-    BuildTarget buildTarget = BuildTargetFactory.newInstance(rootPath, "//foo", "lib");
-    TargetNode<?, ?> node =
-        AppleLibraryBuilder.createBuilder(buildTarget)
-            .setConfigs(ImmutableSortedMap.of("Debug", ImmutableMap.of()))
-            .setSrcs(ImmutableSortedSet.of())
-            .setBridgingHeader(Optional.of(new FakeSourcePath("BridgingHeader/header1.h")))
-            .build();
-
-    ProjectGenerator projectGenerator =
-        createProjectGeneratorForCombinedProject(ImmutableSet.of(node));
-
-    projectGenerator.createXcodeProjects();
-
-    // check if bridging header file existing in the project structure
-    PBXProject project = projectGenerator.getGeneratedProject();
-    PBXGroup targetGroup =
-        project.getMainGroup().getOrCreateChildGroupByName(buildTarget.getFullyQualifiedName());
-    PBXGroup sourcesGroup = targetGroup.getOrCreateChildGroupByName("Sources");
-
-    assertThat(sourcesGroup.getChildren(), hasSize(1));
-
-    PBXFileReference fileRefBridgingHeader =
-        (PBXFileReference) Iterables.get(sourcesGroup.getChildren(), 0);
-    assertEquals("header1.h", fileRefBridgingHeader.getName());
-
-    // check for bridging header build setting
-    PBXTarget target = assertTargetExistsAndReturnTarget(project, "//foo:lib");
-    ImmutableMap<String, String> buildSettings = getBuildSettings(buildTarget, target, "Debug");
-    assertEquals(
-        "$(SRCROOT)/../BridgingHeader/header1.h", buildSettings.get("SWIFT_OBJC_BRIDGING_HEADER"));
-  }
 
   @Test
   public void testGeneratedProjectSettingForSwiftVersion() throws IOException {

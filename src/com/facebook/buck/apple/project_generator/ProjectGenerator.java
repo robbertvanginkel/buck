@@ -987,7 +987,8 @@ public class ProjectGenerator {
         mutator.setInfoPlist(Optional.of(bundleArg.getInfoPlist()));
       }
 
-      mutator.setBridgingHeader(arg.getBridgingHeader());
+      // Need to put this back after migrating to applelibraryarg
+      // mutator.setBridgingHeader(arg.getBridgingHeader());
 
       if (options.contains(Option.CREATE_DIRECTORY_STRUCTURE) && isFocusedOnTarget) {
         mutator.setTargetGroupPath(
@@ -1179,15 +1180,15 @@ public class ProjectGenerator {
         Path infoPlistPath = pathRelativizer.outputDirToRootRelative(infoPlistOptional.get());
         extraSettingsBuilder.put("INFOPLIST_FILE", infoPlistPath.toString());
       }
-      if (arg.getBridgingHeader().isPresent()) {
-        Path bridgingHeaderPath =
-            pathRelativizer.outputDirToRootRelative(
-                resolveSourcePath(arg.getBridgingHeader().get()));
-        extraSettingsBuilder.put(
-            "SWIFT_OBJC_BRIDGING_HEADER",
-            Joiner.on('/').join("$(SRCROOT)", bridgingHeaderPath.toString()));
-      }
-
+      // Disabled until bridigingheader goes to apple binary
+      // if (arg.getBridgingHeader().isPresent()) {
+      //   Path bridgingHeaderPath =
+      //       pathRelativizer.outputDirToRootRelative(
+      //           resolveSourcePath(arg.getBridgingHeader().get()));
+      //   extraSettingsBuilder.put(
+      //       "SWIFT_OBJC_BRIDGING_HEADER",
+      //       Joiner.on('/').join("$(SRCROOT)", bridgingHeaderPath.toString()));
+      // }
       swiftVersion.ifPresent(s -> extraSettingsBuilder.put("SWIFT_VERSION", s));
 
       if (hasSwiftVersionArg && containsSwiftCode && isFocusedOnTarget) {

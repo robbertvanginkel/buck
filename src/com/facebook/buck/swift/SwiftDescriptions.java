@@ -68,10 +68,7 @@ public class SwiftDescriptions {
     output.setLibraries(args.getLibraries());
     output.setDeps(args.getDeps());
     output.setSupportedPlatformsRegex(args.getSupportedPlatformsRegex());
-    output.setModuleName(
-        args.getModuleName().map(Optional::of).orElse(Optional.of(buildTarget.getShortName())));
     output.setEnableObjcInterop(true);
-    output.setBridgingHeader(args.getBridgingHeader());
 
     boolean isCompanionTarget = buildTarget.getFlavors().contains(SWIFT_COMPANION_FLAVOR);
     output.setPreferredLinkage(

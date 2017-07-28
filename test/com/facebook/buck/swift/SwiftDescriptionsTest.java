@@ -58,15 +58,7 @@ public class SwiftDescriptionsTest {
     SwiftDescriptions.populateSwiftLibraryDescriptionArg(
         pathResolver, outputBuilder, args.build(), buildTarget);
     SwiftLibraryDescriptionArg output = outputBuilder.build();
-    assertThat(output.getModuleName().get(), equalTo("bar"));
     assertThat(output.getSrcs(), equalTo(ImmutableSortedSet.<SourcePath>of(swiftSrc)));
-
-    args.setModuleName("baz");
-
-    SwiftDescriptions.populateSwiftLibraryDescriptionArg(
-        pathResolver, outputBuilder, args.build(), buildTarget);
-    output = outputBuilder.build();
-    assertThat(output.getModuleName().get(), equalTo("baz"));
     assertThat(output.getVersion().get(), equalTo("3"));
   }
 }

@@ -33,11 +33,11 @@ import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.testutil.integration.ProjectWorkspace;
 import com.facebook.buck.testutil.integration.TemporaryPaths;
 import com.facebook.buck.testutil.integration.TestDataHelper;
+import org.junit.Rule;
+import org.junit.Test;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Optional;
-import org.junit.Rule;
-import org.junit.Test;
 
 public class SwiftOSXBinaryIntegrationTest {
 
@@ -88,19 +88,6 @@ public class SwiftOSXBinaryIntegrationTest {
         workspace.runBuckCommand("run", ":DemoMix#macosx-x86_64");
     runResult.assertSuccess();
     assertThat(runResult.getStdout(), equalTo("Hello Swift\n"));
-  }
-
-  @Test
-  public void swiftCallingObjCRunsAndPrintsMessageOnOSX() throws IOException {
-    assumeThat(AppleNativeIntegrationTestUtils.isSwiftAvailable(ApplePlatform.MACOSX), is(true));
-    ProjectWorkspace workspace =
-        TestDataHelper.createProjectWorkspaceForScenario(this, "swift_calls_objc", tmp);
-    workspace.setUp();
-
-    ProjectWorkspace.ProcessResult runResult =
-        workspace.runBuckCommand("run", ":SwiftCallsObjC#macosx-x86_64");
-    runResult.assertSuccess();
-    assertThat(runResult.getStdout(), containsString("Hello ObjC\n"));
   }
 
   @Test
