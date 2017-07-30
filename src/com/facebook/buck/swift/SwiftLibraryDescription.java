@@ -21,9 +21,14 @@ import static com.facebook.buck.cxx.CxxLibraryDescription.METADATA_TYPE;
 import com.facebook.buck.cxx.CxxDescriptionEnhancer;
 import com.facebook.buck.cxx.CxxHeaders;
 import com.facebook.buck.cxx.CxxLibraryDescription;
+import com.facebook.buck.cxx.CxxPreprocessables;
+import com.facebook.buck.cxx.CxxPreprocessorInput;
+import com.facebook.buck.cxx.CxxSymlinkTreeHeaders;
+import com.facebook.buck.cxx.HeaderSymlinkTreeWithModuleMap;
 import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.HeaderMode;
+import com.facebook.buck.cxx.toolchain.HeaderVisibility;
 import com.facebook.buck.cxx.toolchain.LinkerMapMode;
 import com.facebook.buck.cxx.toolchain.StripStyle;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable;
@@ -150,7 +155,7 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
         case SHARED:
         case MACH_O_BUNDLE:
         case STATIC:
-          throw new RuntimeException("unhandled library build type");
+          throw new RuntimeException("unhandled library build type: " + type.get());
       }
     }
 
@@ -172,17 +177,6 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
   public static Optional<Map.Entry<Flavor, SwiftLibraryDescription.Type>> getLibType(BuildTarget buildTarget) {
     return LIBRARY_TYPE.getFlavorAndValue(buildTarget);
   }
-  /**
-   * Convenience function to query the {@link CxxHeaders} metadata of a target.
-   *
-   * <p>Use this function instead of constructing the BuildTarget manually.
-   */
-  public static Optional<CxxHeaders> queryMetadataCxxHeaders(
-      BuildRuleResolver resolver, BuildTarget baseTarget, HeaderMode mode) {
-    return resolver.requireMetadata(
-        baseTarget.withAppendedFlavors(CxxLibraryDescription.MetadataType.CXX_HEADERS.getFlavor(), mode.getFlavor()),
-        CxxHeaders.class);
-  }
 
   @Override
   public <U> Optional<U> createMetadata(
@@ -195,53 +189,53 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
 
     Map.Entry<Flavor, CxxLibraryDescription.MetadataType> type =
         METADATA_TYPE.getFlavorAndValue(buildTarget).orElseThrow(IllegalArgumentException::new);
-//    BuildTarget baseTarget = buildTarget.withoutFlavors(type.getKey());
+    BuildTarget baseTarget = buildTarget.withoutFlavors(type.getKey());
 
     switch (type.getValue()) {
       case CXX_HEADERS:
       {
-//        Optional<CxxHeaders> symlinkTree = Optional.empty();
-//        CxxPreprocessables.HeaderMode mode = HEADER_MODE.getRequiredValue(buildTarget);
-//          baseTarget = baseTarget.withoutFlavors(mode.getFlavor());
-//          symlinkTree =
-//              Optional.of(
-//                  CxxSymlinkTreeHeaders.from(
-//                      (HeaderSymlinkTree)
-//                          resolver.requireRule(
-//                              baseTarget
-//                                  .withoutFlavors(CxxLibraryDescription.LIBRARY_TYPE.getFlavors())
-//                                  .withAppendedFlavors(
-//                                      SwiftLibraryDescription.Type.EXPORTED_HEADERS.getFlavor(), mode.getFlavor())),
-//                      CxxPreprocessables.IncludeType.LOCAL));
-//        return symlinkTree.map(metadataClass::cast);
+        HeaderMode mode = CxxLibraryDescription.HEADER_MODE.getRequiredValue(buildTarget);
+        baseTarget = baseTarget.withoutFlavors(mode.getFlavor());
+        Optional<CxxHeaders> symlinkTree =
+              Optional.of(
+                  CxxSymlinkTreeHeaders.from(
+                      (HeaderSymlinkTreeWithModuleMap)
+                          resolver.requireRule(
+                              baseTarget
+                                  .withoutFlavors(SwiftLibraryDescription.LIBRARY_TYPE.getFlavors())
+                                  .withAppendedFlavors(
+                                      SwiftLibraryDescription.Type.EXPORTED_HEADERS.getFlavor(), mode.getFlavor())),
+                      CxxPreprocessables.IncludeType.LOCAL));
+        return symlinkTree.map(metadataClass::cast);
       }
 
-      //$FALL-THROUGH$
       case CXX_PREPROCESSOR_INPUT:
       {
-//        Map.Entry<Flavor, CxxPlatform> platform =
-//            cxxPlatformsFlavorDomain
-//                .getFlavorAndValue(buildTarget)
-//                .orElseThrow(IllegalArgumentException::new);
-//        Map.Entry<Flavor, HeaderVisibility> visibility =
-//            CxxLibraryDescription.HEADER_VISIBILITY
-//                .getFlavorAndValue(buildTarget)
-//                .orElseThrow(IllegalArgumentException::new);
-//        baseTarget = baseTarget.withoutFlavors(platform.getKey(), visibility.getKey());
-//
-//        CxxPreprocessorInput.Builder cxxPreprocessorInputBuilder = CxxPreprocessorInput.builder();
-//        cxxPreprocessorInputBuilder.addAllFrameworks(args.getFrameworks());
-//
-//        if (visibility.getValue() == HeaderVisibility.PUBLIC) {
-//          queryMetadataCxxHeaders(
-//              resolver,
-//              baseTarget,
-//              CxxPreprocessables.HeaderMode.HEADER_MAP_ONLY)
-//              .ifPresent(cxxPreprocessorInputBuilder::addIncludes);
-//        }
-//
-//        CxxPreprocessorInput cxxPreprocessorInput = cxxPreprocessorInputBuilder.build();
-//        return Optional.of(cxxPreprocessorInput).map(metadataClass::cast);
+        Map.Entry<Flavor, CxxPlatform> platform =
+            cxxPlatformFlavorDomain
+                .getFlavorAndValue(buildTarget)
+                .orElseThrow(IllegalArgumentException::new);
+        Map.Entry<Flavor, HeaderVisibility> visibility =
+            CxxLibraryDescription.HEADER_VISIBILITY
+                .getFlavorAndValue(buildTarget)
+                .orElseThrow(IllegalArgumentException::new);
+        baseTarget = baseTarget.withoutFlavors(platform.getKey(), visibility.getKey());
+
+        CxxPreprocessorInput.Builder cxxPreprocessorInputBuilder = CxxPreprocessorInput.builder();
+        cxxPreprocessorInputBuilder.addAllFrameworks(args.getFrameworks());
+
+        if (visibility.getValue() == HeaderVisibility.PUBLIC) {
+          resolver.requireMetadata(
+              baseTarget.withAppendedFlavors(
+                  CxxLibraryDescription.MetadataType.CXX_HEADERS.getFlavor(),
+                  HeaderMode.SYMLINK_TREE_WITH_MODULEMAP.getFlavor(),
+                  platform.getKey()),
+              CxxHeaders.class)
+              .ifPresent(cxxPreprocessorInputBuilder::addIncludes);
+        }
+
+        CxxPreprocessorInput cxxPreprocessorInput = cxxPreprocessorInputBuilder.build();
+        return Optional.of(cxxPreprocessorInput).map(metadataClass::cast);
       }
     }
 
