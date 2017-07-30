@@ -55,4 +55,8 @@ public class HeaderSymlinkTree extends SymlinkTree {
   public Optional<SourcePath> getHeaderMapSourcePath() {
     return Optional.empty();
   }
+
+  public Optional<Path> getModuleMap() {
+    return Optional.empty();
+  }
 }
