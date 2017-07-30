@@ -26,6 +26,7 @@ import com.facebook.buck.cxx.CxxStrip;
 import com.facebook.buck.cxx.FrameworkDependencies;
 import com.facebook.buck.cxx.ProvidesLinkedBinaryDeps;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
+import com.facebook.buck.cxx.toolchain.HeaderMode;
 import com.facebook.buck.cxx.toolchain.LinkerMapMode;
 import com.facebook.buck.cxx.toolchain.StripStyle;
 import com.facebook.buck.cxx.toolchain.linker.Linker;
@@ -466,6 +467,19 @@ public class AppleLibraryDescription
       AppleNativeTargetDescriptionArg args,
       Class<U> metadataClass) {
 
+    // If this is a modular apple_library, always do symlinktree with modulemap
+    if (args instanceof AbstractAppleLibraryDescriptionArg) {
+      AbstractAppleLibraryDescriptionArg casted = (AbstractAppleLibraryDescriptionArg) args;
+      if (casted.isModular() &&
+          buildTarget.getFlavors().contains(CxxLibraryDescription.MetadataType.CXX_HEADERS.getFlavor())) {
+        Map.Entry<Flavor, HeaderMode> headerMode =
+            CxxLibraryDescription.HEADER_MODE.getFlavorAndValue(buildTarget).get();
+        if (headerMode.getValue() != HeaderMode.SYMLINK_TREE_WITH_MODULEMAP) {
+          buildTarget = buildTarget.withoutFlavors(headerMode.getKey())
+              .withAppendedFlavors(HeaderMode.SYMLINK_TREE_WITH_MODULEMAP.getFlavor());
+        }
+      }
+    }
     // Forward to C/C++ library description.
     if (CxxLibraryDescription.METADATA_TYPE.containsAnyOf(buildTarget.getFlavors())) {
       CxxLibraryDescriptionArg.Builder delegateArg = CxxLibraryDescriptionArg.builder().from(args);
