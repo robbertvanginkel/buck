@@ -29,7 +29,6 @@ import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.rules.AbstractBuildRuleWithDeclaredAndExtraDeps;
 import com.facebook.buck.rules.AddToRuleKey;
 import com.facebook.buck.rules.BuildContext;
-import com.facebook.buck.rules.BuildRule;
 import com.facebook.buck.rules.BuildRuleParams;
 import com.facebook.buck.rules.BuildableContext;
 import com.facebook.buck.rules.ExplicitBuildTargetSourcePath;
@@ -44,8 +43,6 @@ import com.facebook.buck.rules.args.StringArg;
 import com.facebook.buck.rules.coercer.FrameworkPath;
 import com.facebook.buck.step.Step;
 import com.facebook.buck.step.fs.MkdirStep;
-import com.facebook.buck.util.MoreCollectors;
-import com.facebook.buck.util.MoreIterables;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
@@ -53,7 +50,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
-import com.google.common.collect.Iterables;
 import java.nio.file.Path;
 import java.util.Optional;
 
@@ -162,17 +158,7 @@ class SwiftCompile extends AbstractBuildRuleWithDeclaredAndExtraDeps {
             .flatMap(searchPath -> ImmutableSet.of("-F", searchPath.toString()).stream())
             .iterator());
 
-    compilerCommand.addAll(
-        MoreIterables.zipAndConcat(Iterables.cycle("-Xcc"), getSwiftIncludeArgs(resolver)));
-    compilerCommand.addAll(
-        MoreIterables.zipAndConcat(
-            Iterables.cycle(INCLUDE_FLAG),
-            getBuildDeps()
-                .stream()
-                .filter(SwiftCompile.class::isInstance)
-                .map(BuildRule::getSourcePathToOutput)
-                .map(input -> resolver.getAbsolutePath(input).toString())
-                .collect(MoreCollectors.toImmutableSet())));
+    compilerCommand.addAll(getSwiftIncludeArgs(resolver));
 
     Optional<Iterable<String>> configFlags = swiftBuckConfig.getFlags();
     if (configFlags.isPresent()) {
@@ -229,6 +215,18 @@ class SwiftCompile extends AbstractBuildRuleWithDeclaredAndExtraDeps {
   @Override
   public SourcePath getSourcePathToOutput() {
     return new ExplicitBuildTargetSourcePath(getBuildTarget(), outputPath);
+  }
+
+  public SourcePath getSourcePathToObjCHeaderOutput() {
+    return new ExplicitBuildTargetSourcePath(getBuildTarget(), headerPath);
+  }
+
+  public SourcePath getSourcePathToSwiftModuleOutput() {
+    return new ExplicitBuildTargetSourcePath(getBuildTarget(), modulePath);
+  }
+
+  public SourcePath getSourcePathToObjectOutput() {
+    return new ExplicitBuildTargetSourcePath(getBuildTarget(), objectPath);
   }
 
   /**

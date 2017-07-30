@@ -18,13 +18,16 @@ package com.facebook.buck.swift;
 
 import static com.facebook.buck.cxx.CxxLibraryDescription.METADATA_TYPE;
 
+import com.facebook.buck.cxx.Archive;
 import com.facebook.buck.cxx.CxxDescriptionEnhancer;
 import com.facebook.buck.cxx.CxxHeaders;
 import com.facebook.buck.cxx.CxxLibraryDescription;
 import com.facebook.buck.cxx.CxxPreprocessables;
 import com.facebook.buck.cxx.CxxPreprocessorInput;
 import com.facebook.buck.cxx.CxxSymlinkTreeHeaders;
+import com.facebook.buck.cxx.CxxToolFlags;
 import com.facebook.buck.cxx.HeaderSymlinkTreeWithModuleMap;
+import com.facebook.buck.cxx.PreprocessorFlags;
 import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.HeaderMode;
@@ -34,6 +37,7 @@ import com.facebook.buck.cxx.toolchain.StripStyle;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.model.BuildTarget;
+import com.facebook.buck.model.BuildTargets;
 import com.facebook.buck.model.Flavor;
 import com.facebook.buck.model.FlavorConvertible;
 import com.facebook.buck.model.FlavorDomain;
@@ -49,9 +53,11 @@ import com.facebook.buck.rules.HasDeclaredDeps;
 import com.facebook.buck.rules.HasSrcs;
 import com.facebook.buck.rules.MetadataProvidingDescription;
 import com.facebook.buck.rules.SourcePath;
+import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.facebook.buck.rules.TargetGraph;
 import com.facebook.buck.rules.coercer.FrameworkPath;
 import com.facebook.buck.rules.macros.StringWithMacros;
+import com.facebook.buck.util.RichStream;
 import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.versions.Version;
 import com.google.common.collect.ImmutableList;
@@ -59,6 +65,8 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import org.immutables.value.Value;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -89,9 +97,7 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
   private static final FlavorDomain<Type> LIBRARY_TYPE =
       FlavorDomain.from("Swift Library Type", Type.class);
 
-  @SuppressWarnings("unused")
   private final CxxBuckConfig cxxBuckConfig;
-  @SuppressWarnings("unused")
   private final SwiftBuckConfig swiftBuckConfig;
   private final FlavorDomain<CxxPlatform> cxxPlatformFlavorDomain;
   private final FlavorDomain<SwiftPlatform> swiftPlatformFlavorDomain;
@@ -150,11 +156,48 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
     Optional<Map.Entry<Flavor, SwiftLibraryDescription.Type>> type = getLibType(buildTarget);
 
     if (type.isPresent() && platform.isPresent()) {
+      SwiftPlatform swiftPlatform = swiftPlatformFlavorDomain.getValue(buildTarget).get();
+      CxxPlatform cxxPlatform = cxxPlatformFlavorDomain.getValue(buildTarget).get();
+
+      final BuildTarget compileBuildTarget = buildTarget.withFlavors(SWIFT_COMPILE_FLAVOR, platform.get().getKey());
+      String moduleName = args.getModuleName().orElse(buildTarget.getShortName());
+      SwiftCompile swiftc = getSwiftCompile(
+          projectFilesystem,
+          params,
+          resolver,
+          cellRoots,
+          args,
+          swiftPlatform,
+          cxxPlatform,
+          compileBuildTarget,
+          moduleName);
       switch (type.get().getValue()) {
         case EXPORTED_HEADERS:
+          ImmutableMap<Path, SourcePath> headers = ImmutableMap.of(
+              Paths.get(moduleName, moduleName + "-Swift.h"), swiftc.getSourcePathToObjCHeaderOutput(),
+              Paths.get(moduleName + ".swiftmodule"), swiftc.getSourcePathToSwiftModuleOutput()
+          );
+          return CxxDescriptionEnhancer.createHeaderSymlinkTree(
+              buildTarget,
+              projectFilesystem,
+              HeaderMode.SYMLINK_TREE_WITH_MODULEMAP,
+              headers,
+              HeaderVisibility.PUBLIC);
+        case STATIC:
+          SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
+          return Archive.from(
+              buildTarget,
+              projectFilesystem,
+              ruleFinder,
+              cxxPlatform,
+              cxxBuckConfig.getArchiveContents(),
+              BuildTargets.getGenPath(projectFilesystem, buildTarget, "%s/lib" + moduleName + ".a"),
+              ImmutableList.of(swiftc.getSourcePathToObjectOutput()),
+              true
+          );
         case SHARED:
         case MACH_O_BUNDLE:
-        case STATIC:
+        default:
           throw new RuntimeException("unhandled library build type: " + type.get());
       }
     }
@@ -172,6 +215,62 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
         args.getLibraries(),
         args.getSupportedPlatformsRegex(),
         args.getPreferredLinkage().orElse(NativeLinkable.Linkage.ANY));
+  }
+
+  private SwiftCompile getSwiftCompile(
+      ProjectFilesystem projectFilesystem,
+      BuildRuleParams params,
+      BuildRuleResolver resolver,
+      CellPathResolver cellRoots,
+      SwiftLibraryDescriptionArg args,
+      SwiftPlatform swiftPlatform,
+      CxxPlatform cxxPlatform,
+      BuildTarget compileBuildTarget,
+      String moduleName) {
+    return (SwiftCompile) resolver.computeIfAbsent(compileBuildTarget,
+        (BuildTarget buildTarget) -> {
+          CxxPreprocessorInput inputs =
+              CxxPreprocessorInput.concat(
+                  CxxPreprocessables.getTransitiveCxxPreprocessorInput(
+                      cxxPlatform, params.getBuildDeps()));
+          SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
+          Iterable<BuildRule> deps = inputs.getDeps(resolver, ruleFinder);
+
+          PreprocessorFlags cxxDeps =
+              PreprocessorFlags.of(
+                  Optional.empty(),
+                  CxxToolFlags.of(),
+                  RichStream.from(inputs.getIncludes())
+                      .filter(
+                          headers -> headers.getIncludeType() != CxxPreprocessables.IncludeType.SYSTEM)
+                      .toImmutableSet(),
+                  inputs.getFrameworks());
+
+          SwiftCompile swiftc = new SwiftCompile(
+              cxxPlatform,
+              swiftBuckConfig,
+              compileBuildTarget,
+              projectFilesystem,
+              params.copyAppendingExtraDeps(deps),
+              swiftPlatform.getSwiftc(),
+              args.getFrameworks(),
+              moduleName,
+              BuildTargets.getGenPath(projectFilesystem, compileBuildTarget, "%s"),
+              args.getSrcs(),
+              Optional.empty(),
+              RichStream.from(args.getCompilerFlags())
+                  .map(
+                      f ->
+                          CxxDescriptionEnhancer.toStringWithMacrosArgs(
+                              compileBuildTarget, cellRoots, resolver, cxxPlatform, f))
+                  .toImmutableList(),
+              args.getEnableObjcInterop(),
+              args.getBridgingHeader(),
+              cxxPlatform.getCpp().resolve(resolver),
+              cxxDeps
+          );
+          return swiftc;
+        });
   }
 
   public static Optional<Map.Entry<Flavor, SwiftLibraryDescription.Type>> getLibType(BuildTarget buildTarget) {
