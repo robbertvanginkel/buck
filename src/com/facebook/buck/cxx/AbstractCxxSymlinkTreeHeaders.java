@@ -25,12 +25,12 @@ import com.facebook.buck.rules.SourcePath;
 import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.google.common.collect.ImmutableMap;
+import org.immutables.value.Value;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
-import org.immutables.value.Value;
 
 /** Encapsulates headers modeled using a {@link HeaderSymlinkTree}. */
 @Value.Immutable(prehash = true)

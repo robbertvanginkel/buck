@@ -48,4 +48,9 @@ public class HeaderSymlinkTree extends SymlinkTree {
   public Optional<Path> getHeaderMap() {
     return Optional.empty();
   }
+
+  /** Get path of the header map indexing this tree if one exists. */
+  public Optional<Path> getModuleMap() {
+    return Optional.empty();
+  }
 }

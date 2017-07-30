@@ -148,6 +148,8 @@ public class CxxPreprocessables {
     switch (headerMode) {
       case SYMLINK_TREE_WITH_HEADER_MAP:
         return HeaderSymlinkTreeWithHeaderMap.create(target, filesystem, root, links);
+      case SYMLINK_TREE_WITH_MODULEMAP:
+        return HeaderSymlinkTreeWithModuleMap.create(target, filesystem, root, links);
       case HEADER_MAP_ONLY:
         return new DirectHeaderMap(target, filesystem, root, links);
       default:

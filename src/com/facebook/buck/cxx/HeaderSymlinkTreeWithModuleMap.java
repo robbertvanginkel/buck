@@ -27,79 +27,93 @@ import com.facebook.buck.rules.BuildableContext;
 import com.facebook.buck.rules.ExplicitBuildTargetSourcePath;
 import com.facebook.buck.rules.SourcePath;
 import com.facebook.buck.step.Step;
+import com.facebook.buck.step.fs.StringTemplateStep;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSortedSet;
+import com.google.common.io.Resources;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Optional;
 
-public final class HeaderSymlinkTreeWithHeaderMap extends HeaderSymlinkTree {
+public final class HeaderSymlinkTreeWithModuleMap extends HeaderSymlinkTree {
 
-  private static final Logger LOG = Logger.get(HeaderSymlinkTreeWithHeaderMap.class);
+  private static final Logger LOG = Logger.get(HeaderSymlinkTreeWithModuleMap.class);
+
+  private static final Path MODULEMAP_TEMPLATE_PATH = Paths.get(
+      Resources.getResource(
+          HeaderSymlinkTreeWithModuleMap.class, "modulemap.st").getPath());
 
   @AddToRuleKey(stringify = true)
-  private final Path headerMapPath;
+  private final Path moduleMapPath;
 
-  private HeaderSymlinkTreeWithHeaderMap(
+  @AddToRuleKey
+  private final String moduleName;
+
+  private HeaderSymlinkTreeWithModuleMap(
       BuildTarget target,
       ProjectFilesystem filesystem,
       Path root,
       ImmutableMap<Path, SourcePath> links,
-      Path headerMapPath) {
+      String moduleName) {
     super(target, filesystem, root, links);
-    this.headerMapPath = headerMapPath;
+    this.moduleName = moduleName;
+    this.moduleMapPath = getPath(filesystem, target, moduleName);
   }
 
-  public static HeaderSymlinkTreeWithHeaderMap create(
+  public static HeaderSymlinkTreeWithModuleMap create(
       BuildTarget target,
       ProjectFilesystem filesystem,
       Path root,
       ImmutableMap<Path, SourcePath> links) {
-    Path headerMapPath = getPath(filesystem, target);
-    return new HeaderSymlinkTreeWithHeaderMap(target, filesystem, root, links, headerMapPath);
+    String moduleName = getModuleName(links);
+    return new HeaderSymlinkTreeWithModuleMap(target, filesystem, root, links, moduleName);
   }
 
   @Override
   public SourcePath getSourcePathToOutput() {
-    return new ExplicitBuildTargetSourcePath(getBuildTarget(), headerMapPath);
+    return new ExplicitBuildTargetSourcePath(getBuildTarget(), moduleMapPath);
   }
 
   @Override
   public ImmutableList<Step> getBuildSteps(
       BuildContext context, BuildableContext buildableContext) {
-    LOG.debug("Generating post-build steps to write header map to %s", headerMapPath);
-    Path buckOut =
-        getProjectFilesystem().resolve(getProjectFilesystem().getBuckPaths().getBuckOut());
-
-    ImmutableMap.Builder<Path, Path> headerMapEntries = ImmutableMap.builder();
-    for (Path key : getLinks().keySet()) {
-      // The key is the path that will be referred to in headers. It can be anything. However, the
-      // value given in the headerMapEntries is the path of that entry in the generated symlink
-      // tree. Because "reasons", we don't want to cache that value, so we need to relativize the
-      // path to the output directory of this current rule. We then rely on magic and the stars
-      // aligning in order to get this to work. May we find peace in another life.
-      headerMapEntries.put(key, buckOut.relativize(getRoot().resolve(key)));
-    }
+    LOG.debug("Generating post-build steps to write modulemap to %s", moduleMapPath);
+    ImmutableSortedSet<Path> paths = getLinks().keySet();
     ImmutableList.Builder<Step> builder =
         ImmutableList.<Step>builder()
             .addAll(super.getBuildSteps(context, buildableContext))
-            .add(
-                new HeaderMapStep(getProjectFilesystem(), headerMapPath, headerMapEntries.build()));
+            .add(new StringTemplateStep(
+                MODULEMAP_TEMPLATE_PATH,
+                getProjectFilesystem(),
+                moduleMapPath,
+                ImmutableMap.of(
+                    "module_name", moduleName,
+                    "has_umbrella_header", paths.contains(Paths.get(moduleName, moduleName + ".h")),
+                    "has_swift_header", paths.contains(Paths.get(moduleName, moduleName + "-Swift.h")))
+                ));
+
     return builder.build();
   }
 
   @Override
   public Path getIncludePath() {
-    return getProjectFilesystem().resolve(getProjectFilesystem().getBuckPaths().getBuckOut());
+    return getRoot();
   }
 
+
   @Override
-  public Optional<Path> getHeaderMap() {
-    return Optional.of(getProjectFilesystem().resolve(headerMapPath));
+  public Optional<Path> getModuleMap() {
+    return Optional.of(getProjectFilesystem().resolve(moduleMapPath));
+  }
+
+  static String getModuleName(ImmutableMap<Path, SourcePath> links) {
+    return links.keySet().iterator().next().getName(0).toString();
   }
 
   @VisibleForTesting
-  static Path getPath(ProjectFilesystem filesystem, BuildTarget target) {
-    return BuildTargets.getGenPath(filesystem, target, "%s.hmap");
+  static Path getPath(ProjectFilesystem filesystem, BuildTarget target, String moduleName) {
+    return BuildTargets.getGenPath(filesystem, target, "%s/" + moduleName + "/module.modulemap");
   }
 }
