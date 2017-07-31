@@ -1,0 +1,200 @@
+<!doctype html><html xmlns="http://www.w3.org/1999/xhtml"><head prefix="og: http://ogp.me/ns# fb: http://ogp.me/ns#"><script>var loc = new String(window.location); if (loc.indexOf('facebook.github.io/buck') != -1) {window.location.replace(loc.replace('facebook.github.io/buck', 'buckbuild.com'));}</script><!-- Facebook Pixel Code --><script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','//connect.facebook.net/en_US/fbevents.js'); fbq('init', '1637165926500152'); fbq('track', 'PageView');</script><noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1637165926500152&ev=PageView&noscript=1" /></noscript><!-- End Facebook Pixel Code --><title>Buck: buck query</title><link type="image/png" rel="shortcut icon" href="/static/favicon.png" /><meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no" /><meta http-equiv="content-type" content="text/html;charset=utf-8"><link type="text/css" rel="stylesheet" href="/google-code-prettify/prettify.css" ><link type="text/css" rel="stylesheet" href="/static/buck.css"><link type="text/css" rel="stylesheet" href="/static/search.css"><link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/docsearch.js/1/docsearch.min.css" /><meta property="og:locale" content="en_US"><meta property="og:title" content="buck query"><meta property="og:site_name" content="Buck: a build tool"><meta property="og:image" content="http://buckbuild.com/static/og.png"><meta property="og:type" content="article"><meta property="og:description" content="Provide facilities to query information about the target nodes graph."><meta property="fb:admins" content="584556688222168"><script>
+    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+    })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+    ga('create', 'UA-44373548-18', 'auto');
+    ga('send', 'pageview');
+  </script></head><body><div id="fb-root"></div><script>(function(d, s, id) {var js, fjs = d.getElementsByTagName(s)[0]; if (d.getElementById(id)) return; js = d.createElement(s); js.id = id; js.src = "//connect.facebook.net/en_US/all.js#xfbml=1&appId=584556688222168"; fjs.parentNode.insertBefore(js, fjs);}(document, 'script', 'facebook-jssdk'));</script><header class='topbar'><nav class='width'><a href='http://buckbuild.com/'><h1>Buck</h1></a><ul class='menu'><li class="algolia-search-wrapper"><input id="algolia-doc-search" type="search" placeholder="Search docs..." /></li><li><a href='/setup/getting_started.html'>Docs</a><li><a href='https://groups.google.com/forum/#!forum/buck-build'>Group</a><li><a href='https://github.com/facebook/buck'>GitHub</a></ul></nav></header><section class='content'><div class='width'><article id="content"><h1>buck query</h1><div class="overview"><p>Provide facilities to query information about the target nodes graph and lists the build targets that satisfy the query expression.</p><p><code>buck query</code> allows us to combine different operators, using a query language. For example, to retrieve the list of all tests for a build target, a single <code>buck query</code> call suffices by combining the <code>deps</code> and <code>testsof</code> operators.</p><p><pre>
+buck query "testsof(deps(//java/com/example/app:amazing))"
+</pre></p><h2>Query Language</h2><p>The Query Language was inspired by <a href="http://bazel.io/docs/query.html">Bazel's Query Language</a>. <code>buck query</code> uses the same parser, so the lexical syntax is similar, supporting part of Bazel's query functions and a few extensions.<h3>Lexical Syntax</h3><p>Expressions in the query language are composed of the following tokens:</p><ul><li><b>Keywords</b>, such as <code>deps</code> or <code>testsof</code>. Keywords are the reserved words of the language. The complete set of keywords is:<ul style="line-height:0.5em"><li><a href="#allpaths"><code>allpaths</code></a></li><li><a href="#attrfilter"><code>attrfilter</code></a></li><li><a href="#buildfile"><code>buildfile</code></a></li><li><a href="#deps"><code>deps</code></a></li><li><a href="#inputs"><code>inputs</code></a></li><li><a href="#set-operations"><code>except</code></a></li><li><a href="#set-operations"><code>intersect</code></a></li><li><a href="#filter"><code>filter</code></a></li><li><a href="#kind"><code>kind</code></a></li><li><a href="#labels"><code>labels</code></a></li><li><a href="#owner"><code>owner</code></a></li><li><a href="#rdeps"><code>rdeps</code></a></li><li><a href="#set"><code>set</code></a></li><li><a href="#testsof"><code>testsof</code></a></li><li><a href="#set-operations"><code>union</code></a></li></ul></li><li><p><b>Words</b>, such as <code>//foo:bar</code> or <code>//foo:bar+lib"</code>. If a character sequence is "quoted" (begins and ends with a single-quote <code>'</code>, or begins and ends with a double-quote <code>"</code>), it is a word. If a character sequence is not quoted, it may still be parsed as a word. Unquoted words are sequences of characters drawn from the set of alphabet characters, numerals, slash <code>/</code>, colon <code>:</code>, period <code>.</code>, hyphen <code>-</code>, underscore <code>_</code>, and star <code>*</code>. Unquoted words may not start with a hyphen or period.</p><p>This syntax makes it so that quote marks aren't needed in most cases. Quoting <code>"java_test"</code> is unnecessary but harmless. Quoting is necessary when writing scripts that construct <code>buck query</code> expressions from user-supplied values.<pre>
+//foo:bar+wiz    # WRONG: scanned as //foo:bar + wiz.
+//foo:bar=wiz    # WRONG: scanned as //foo:bar = wiz.
+"//foo:bar+wiz"  # ok.
+"//foo:bar=wiz"  # ok.
+</pre></p><p>Note that this quoting is in addition to any quoting that may be required by your shell.<pre>
+buck query ' "//foo:bar=wiz" '
+</pre>In this example, single-quotes are used for the shell and double-quotes for <code>buck query</code>.</p></li><li><b>Punctuation</b>, such as parens (<code>()</code>), period (<code>.</code>) and comma (<code>,</code>), etc. Words containing punctuation (other than the exceptions listed above) must be quoted.</li></ul><p>Whitespace characters outside of a quoted word are ignored.</p><h3>Expressions: syntax and semantics of the grammar</h3><p>This is the grammar of the query language, expressed in <a href="https://en.wikipedia.org/wiki/Extended_Backus-Naur_Form">EBNF</a> notation:</p><pre>
+expr ::= word
+       | (expr)
+       | expr intersect expr
+       | expr ^ expr
+       | expr union expr
+       | expr + expr
+       | expr except expr
+       | expr - expr
+       | allpaths(expr, expr)
+       | attrfilter(word, word, expr)
+       | buildfile(expr)
+       | deps(expr)
+       | deps(expr, depth)
+       | deps(expr, depth, expr)
+       | filter(word, expr)
+       | inputs(expr)
+       | kind(word, expr)
+       | labels(word, expr)
+       | owner(word)
+       | rdeps(expr, expr)
+       | rdeps(expr, expr, depth)
+       | set(word *)
+       | testsof(expr)
+</pre><h4>Target Patterns</h4><p><pre>expr ::= word</pre></p><p>Syntactically, a build target pattern is just a word. It is interpreted as an unordered set of targets. A <a href="/concept/build_target_pattern.html">build target pattern</a> can be evaluated to a set containing one or more elements.</p><p>For example, the word <code>//foo:bar</code> evaluates to a set containing one element, while <code>//foo/...</code> matches all targets in every directory beneath the </code>foo</code> directory.</p><h4>Aliases</h4><p><pre>expr ::= word</pre></p><p>Aliases defined in <a href="/concept/buckconfig.html"><code>.buckconfig</code></a> can be used in queries. The aliases will be resolved to the corresponding build targets. Suppose there is an alias <code>app = //apps/myapp:app
+</code>, then <code>app</code> can be used instead <code>//apps/myapp:app</code> in query expressions.</p><p><code>buck query</code> can also be used to resolve aliases. e.g.</p><p><pre>
+$ buck query app
+//apps/myapp:app
+</pre></p><h4>Parenthesized expressions</h4><p><pre>expr ::= (expr)</pre></p><p>Parentheses associate subexpressions to force an order of evaluation. A parenthesized expression evaluates to the value of its argument.</p><h4 id="set-operations">Algebraic set operations: intersection, union, set difference</h4><p><p><pre>
+expr ::= expr intersect expr
+       | expr ^ expr
+       | expr union expr
+       | expr + expr
+       | expr except expr
+       | expr - expr
+</pre></p><p>These three operators compute the usual set operations over their arguments. Each operator has two forms, a nominal form such as <code>intersect</code> and a symbolic form such as <code>^</code>. Both forms are equivalent; the symbolic forms are quicker to type. For example,</p><p><pre>deps(//foo:bar) intersect deps(//baz:lib)</pre></p><p>evaluates to the targets that appear both in the transitive closure of <code>//foo:bar</code> and <code>//baz:lib</code>. Equivalently:</p><p><pre>deps(//foo:bar) ^ deps(//baz:lib)</pre></p><p>The <code>intersect</code> (<code>^</code>) and <code>union</code> (<code>+</code>) operations are commutative (symmetric); <code>except</code> (<code>-</code>) is asymmetric. The parser treats all three operators as left-associative and of equal precedence, so you might want parentheses. For example, the first two of these expressions are equivalent, but the third is not:</p><p><pre>
+x intersect y union z
+(x intersect y) union z
+x intersect (y union z)
+</pre></p><p>It is strongly recommended to use parentheses where there is any danger of ambiguity in reading a query expression.</p><h4 id="set">Read targets from an external source: set</h4><p><p><pre>expr ::= set(word *)</pre></p><p>The <code>set(a b c ...)</code> operator computes the union of a set of zero or more targets, separated by whitespace (no commas).</p><p>If you are invoking <code>buck query</code> programmatically, e.g. run a query on a list of targets, <code>set()</code> is a way of grouping this list in the query. Remember to quote the targets to make sure they are parsed correctly.</p><h4 id="allpaths">All dependency paths: allpaths</h4><p><p><pre>
+expr ::= allpaths(expr, expr)
+</pre></p><p>The <code>allpaths(from, to)</code> operator evaluates to the graph formed by paths between the sets <code>from</code> and <code>to</code>, following the dependencies between nodes. For example, the value of <code>allpaths(//foo:bar, //foo/bar/lib:baz)</code> is the dependency graph rooted at the single target node <code>//foo:bar</code>, including all target nodes that depend on <code>//foo/bar/lib:baz</code>.</p><p>The arguments can be expressions.<br/><code>
+allpaths(kind(java_library, '//...'), '//foo:bar')
+</code> shows all the paths between any <code>java_library</code> in the repository and the target <code>//foo:bar</code>.</p><p>This operator is best used together with the <code>--dot</code> parameter to generate an image. Sample usage:</p><p><pre class="prettyprint lang-py">
+$ buck query "allpaths(//foo:bar, //foo/bar/lib:baz)" --dot > result.dot
+$ dot -Tpng result.dot -o image.png
+</pre></p><h4 id="attrfilter">Rule attribute filtering: attrfilter</h4><p><p><pre>
+expr ::= attrfilter(word, word, expr)
+</pre></p><p>The <code>attrfilter(attribute, value, expression)</code> operator evaluates the given <code>expression</code> and filters the resulting build targets whose <code>attribute</code> contain the given <code>value</code>.</p><p>If the attribute is just a value, say <code>name</code>, it is compared to the given <code>value</code>. If it's a list, the target is filtered if the given <code>value</code> is contained in the list. If it's a dictionary, the <code>value</code> is searched both in the keys and values of the dictionary.</p><p>For example, <code>attrfilter(deps, '//foo:bar', '//...')</code> filters the build targets in the repository that depend on <code>'//foo:bar'</code>.</p><h4 id="buildfile">Build files of targets: buildfile</h4><p><p><pre>
+expr ::= buildfile(expr)
+</pre></p><p>The <code>buildfile(expression)</code> operator evaluates to the build files that define the targets that result from the evaluation of <code>expression</code>.</p><p>In order to find the build file associated with a file, the <code>owner</code> operator can be combined with <code>buildfile</code>. For example, <code>buildfile(owner('foo/bar/main.cpp'))</code> first finds the targets that own <code>foo/bar/main.cpp</code> and then find the build files that define these targets, e.g. <code>foo/bar/BUCK</code>.</p><h4 id="deps">Transitive closure of dependencies: deps</h4><p><p><pre>
+expr ::= deps(expr)
+       | deps(expr, depth)
+       | deps(expr, depth, expr)
+</pre></p><p>The <code>deps(x)</code> operator evaluates to the graph formed by the transitive closure of dependencies of its argument set <i>x</i>. For example, the value of <code>deps(//foo:bar)</code> is the dependency graph rooted at the single target node <code>//foo:bar</code>, including all its dependencies.</p><p>The <code>deps</code> operator accepts an optional second argument, which is an integer literal specifying an upper bound on the depth of the search. So <code>deps(//foo:bar, 1)</code> evaluates to the direct dependencies of the target <code>//foo:bar</code>, and <code>deps(//foo:bar, 2)</code> further includes the nodes directly reachable from the nodes in <code>deps(//foo:bar, 1)</code>, and so on. If the depth parameter is omitted, the search is unbounded, i.e. it computes the transitive closure of dependencies.</p><p>The <code>deps</code> operator accepts an optional third argument, which is an expression that is evaluated for each node and returns the children to recurse on when collecting transitive dependencies. The filter expression can use the <code>first_order_deps()</code> function which evaluates to a set containing the first-order depencencies of the current node (e.g. equivalent to <code>deps(<node>, 1)</code>). As an example, the query <code>deps(//foo:bar, 1, first_order_deps())</code> is equivalent to <code>deps(//foo:bar, 1)</code>.</p><h4 id="filter">Filter targets by name: filter</h4><p><p><pre>
+expr ::= filter(word, expr)
+</pre></p><p>The <code>filter(pattern, expression)</code> operator evaluates the given <code>expression</code> and filters the targets whose name matches the given regular expression <code>pattern</code>. For example, <code>filter('library', deps('//foo:bar'))</code> will filter the targets in the transitive closure of <code>//foo:bar</code> that contain <code>library</code> in their name.</p><p>Another example is <code>filter('.*\.java$', labels(srcs, /&#x2F;foo:bar))</code> which filters the <code>java</code> files used to build <code>//foo:bar</code>. Quotation of the pattern is often required to make sure regular expressions, e.g. <code>.*xpto</code>, are parsed correctly.</p><h4 id="inputs">Direct input files: inputs</h4><p><p><pre>
+expr ::= inputs(expr)
+</pre></p><p>The <code>inputs(x)</code> operator evaluates to the files which are inputs to the argument set <i>x</i>, ignoring all dependencies. Note that it does not include any files required for parsing (e.g. the BUCK file), rather just the files required to actually run the build after parsing has been performed.</p><h4 id="kind">Filter targets by rule type: kind</h4><p><p><pre>
+expr ::= kind(word, expr)
+</pre></p><p>The <code>kind(pattern, expression)</code> operator evaluates the given <code>expression</code> and filters the targets whose rule type matches the given <code>pattern</code>. For example, <code>kind('java_library', deps('//foo:bar'))</code> will filter all <code>java_library</code> targets in the transitive dependencies of <code>//foo:bar</code>.</p><p>The pattern can be a regular expression. Hence, <code>kind('.*_test', '//...')</code> will evaluate to all targets in the repository whose rule type ends with <code>_test</code>, e.g. <code>java_test</code> or <code>cxx_test</code>.</p><p>Quotation of the pattern is often required to make sure regular expressions, e.g. <code>.*_test</code>, are parsed correctly.</p><h4 id="labels">Extract content of rule attributes: labels</h4><p><p><pre>
+expr ::= labels(word, expr)
+</pre></p><p>The <code>labels(name, expr)</code> operator evaluates to the set of build targets and file paths specified in the attribute <code>name</code> of the targets that result from the evaluation of the expression <code>expr</code>.</p><p>For example, <code>labels(srcs, '//foo:bar')</code> will return all files and build targets specified in the <code>srcs</code> attribute of the rule <code>//foo:bar</code>.</p><p><code>labels('deps', testsof('//foo:bar'))</code> evaluates to the build targets and file paths of the <code>deps</code> attribute of the tests of the rule <code>//foo:bar</code>. Note that <code>deps</code> must be quoted because it is a reserved keyword of the query language.</p><h4 id="owner">Find targets that own specified files: owner</h4><p><p><pre>
+expr ::= owner(word)
+</pre></p><p>The <code>owner(x)</code> operator evaluates to the targets that own the file specified as argument. For example, <code>owner('examples/1.txt')</code> evaluates to the target that owns the file <code>examples/1.txt</code>, e.g. <code>//examples:one</code>.</p><p>If no target that owns the file is found, the operator evaluates to the empty set.</p><h4 id="rdeps">Transitive closure of reverse dependencies: rdeps</h4><p><p><pre>
+expr ::= rdeps(expr, expr)
+       | rdeps(expr, expr, depth)
+</pre></p><p>The <code>rdeps(u, x)</code> operator evaluates to the reverse dependencies of the argument set <code>x</code> within the transitive closure of the set <code>u</code> (the <i>universe</i>).</p><p>The <code>rdeps</code> operator accepts an optional third argument, which is an integer literal specifying an upper bound on the depth of the search. So <code>rdeps(//foo:bar, //example:baz, 1)</code> evaluates to the targets in the transitive closure of <code>//foo:bar</code> that depend directly on <code>//example:baz</code>. If the depth parameter is omitted, the search is unbounded.</p><h4 id="testsof">List the tests of given targets: testsof</h4><p><p><pre>expr ::= testsof(expr)</pre></p><p>The <code>testsof(x)</code> operator evaluates to the tests associated with the targets of its argument set <i>x</i>. For example, the value of <code>testsof(set('//foo:bar' '//baz:app+lib')</code> is the set of tests associated with either <code>//foo:bar</code> or <code>//baz:app+lib</code>.</p><p>In order to obtain all the tests associated with the target and its dependencies, this operator can be combined with the <code>deps</code> operator, e.g. <code>testsof(deps(//foo:bar))</code> first finds the transitive closure of <code>//foo:bar</code>, and then lists all the tests of this transitive closure.</p><h2>Executing multiple queries at once</h2><p>Suppose you want to know the tests associated with a set of targets. This can be done combining the <code>testsof</code>, <code>deps</code> and <code>set</code> operators, e.g.</p><p><pre>buck query testsof(deps(set(target1 target2 target3)))</pre></p><p>Suppose now that you want to now the tests for each of these targets. The above command only had the union of the tests. Instead of executing one query per target, <code>buck query</code> provides an interface to perform repeated queries with different inputs at the same time. To do this, first define the query expression format and then pass the list of input targets. Example:</p><p><pre>buck query testsof(deps(%s)) target1 target2 target3</pre></p><p>The <code>%s</code> in the query expression format will be replaced by each the targets and the resulting query is evaluated for each input. Combined with the <code>--json</code> parameter, the result of this <code>buck query</code> call is aggregated by input target, otherwise it returns the union of each query.</p><h2>Referencing Args Files</h2><p>When running queries, arguments can be stored in external files, one argument per line, and referenced with the <code>@</code> symbol. This is convenient when the number of arguments is long or when the query input should be persisted to source control.</p><p><pre>buck query testsof(deps(%s)) @/path/to/args-file</pre></p><p>If only one query that includes all targets in the file is desired, an alternative syntax can be used:</p><p><pre>buck query testsof(deps(%Ss)) @/path/to/args-file</pre></p><p>In the example above, the lines of the file will be converted to a set and subsituted for the <code>%Ss</code>. In addition, each line's contents will be singly quoted. In the example above, if the args file contained the following:</p><p><pre>
+//foo:bar
+//foo:baz
+</pre></p><p>Then the query produced will be equivalent to:</p><p><pre>buck query testsof(deps(set('//foo:bar' '//foo:baz')))</pre></p><h2>Parameters</h2><ul class="arglist"><li class="arg"><code>--dot</code>  <p>Outputs the digraph representing the query results in <a href= "https://en.wikipedia.org/wiki/DOT_(graph_description_language)#Directed_graphs">dot format</a>. Example usage:</p><p><pre class="prettyprint lang-py">
+$ buck query "allpaths(//foo:bar, //path/to:other)" --dot > graph.dot
+$ dot -Tpng graph.dot -o graph.png
+</pre></p><p>Then, open <code>graph.png</code> to visualize the graph.</p><li class="arg"><code>--json</code>  Outputs the results as JSON.<li class="arg"><code>--output-attributes &lt;attributes&gt;</code>  <div id="output-attributes"><p>Outputs the results as a JSON dictionary <code>build target -> attributes map</code>. The attributes map is a dictionary mapping the specified attributes to their values for the build target. Attributes are regular expressions (e.g. '.*' matches all attributes). If an attribute (e.g. <code>srcs</code>) is not defined for a build target, it is not present in the output. Example:</p><p><pre class="prettyprint lang-py">
+$ buck query '//example/...' --output-attributes buck.type name srcs
+{
+  "//example/foo:bar" : {
+    "buck.type" : "cxx_library",
+    "name" : "foobar",
+    "srcs" : [ "example/foo/bar.cc", "example/foo/lib/lib.cc" ]
+  }
+  "//example/foo:main" : {
+    "buck.type" : "cxx_binary",
+    "name" : "main"
+  }
+}
+</pre></p></div></ul><h2>Examples</h2><pre class="prettyprint lang-py">
+# For all of the following examples, assume this BUCK file exists in
+# the `examples` directory.
+cxx_library(
+  name = 'one',
+  srcs = [ '1.cpp' ],
+  deps = [
+    ':two',
+    ':three',
+  ],
+)
+
+cxx_library(
+  name = 'two',
+  srcs = [ '2.cpp' ],
+  deps = [
+    ':four',
+  ],
+  tests = [ ':two-tests' ]
+)
+
+cxx_library(
+  name = 'three',
+  srcs = [ '3.cpp' ],
+  deps = [
+    ':four',
+    ':five',
+  ],
+  tests = [ ':three-tests' ],
+)
+
+cxx_library(
+  name = 'four',
+  srcs = [ '4.cpp' ],
+  deps = [
+    ':five',
+  ]
+)
+
+cxx_library(
+  name = 'five',
+  srcs = [ '5.cpp' ],
+)
+
+cxx_test(
+  name = 'two-tests',
+  srcs = [ '2-test.cpp' ],
+  deps = [ ':two' ],
+)
+
+cxx_test(
+  name = 'three-tests',
+  srcs = [ '3-test.cpp' ],
+  deps = [ ':three' ],
+)
+</pre><p>Lists all the targets in the repository.</p><p><pre>buck query "//..."</pre><pre>
+//examples:five
+//examples:four
+//examples:one
+//examples:three
+//examples:three-tests
+//examples:two
+//examples:two-tests
+</pre></p><p>Resolve multiple aliases. Suppose there is an alias <code>app = //apps/myapp:app</code> and another <code>lib = //libraries/mylib:lib</code>.<p><p><pre>buck query "%s" app lib --json</pre><pre class="prettyprint lang-js">
+{
+  "app": ["//apps/myapp:app"],
+  "lib": ["//libraries/mylib:lib"]
+}
+</pre></p>Lists all of the rules that the <code>one</code> library directly depends on<pre>buck query "deps(//examples:one, 1)"</pre><pre>
+//examples:one
+//examples:three
+//examples:two
+</pre>Lists the JSON representation of the transitive closure of the rules that the <code>one</code> library depends on<pre>buck query "deps(//examples:one)"</pre><pre class="prettyprint lang-js">
+[
+  "//examples:five",
+  "//examples:four",
+  "//examples:one",
+  "//examples:three",
+  "//examples:two"
+]
+</pre>Outputs a JSON representation of the tests associated with the <code>one</code> and <code>three</code> libraries.<pre>
+buck query --json "testsof(deps('%s'))" //examples:one //examples:three
+</pre><pre class="prettyprint lang-js">
+{
+  "//examples:one": ["//examples:two-tests"],
+  "//examples:three": ["//examples:three-tests"]
+}
+</pre><p>Resolve multiple aliases. Suppose there is an alias <code>app = //apps/myapp:app</code> and another <code>lib = //libraries/mylib:lib</code>.<p><p><pre>buck query "buildfile(owner('examples/1.cpp'))"</pre><pre class="prettyprint lang-js">
+example/BUCK
+</pre></p></div></article><nav><h3>The Basics</h3><ul><li class=""><a href="/setup/getting_started.html">Getting Started</a></li><li class=""><a href="/about/overview.html">Key Topics</a></li><li class=""><a href="/learning/tutorial.html">Tutorial</a></li><li class=""><a href="/setup/intellij_plugin_install.html">Installing the IntelliJ Plugin</a></li><li class=""><a href="/article/exopackage.html">Exopackage</a></li><li class=""><a href="/article/query_cheat_sheet.html">Buck Query Cheat Sheet</a></li></ul><h3>About</h3><ul><li class=""><a href="/concept/what_makes_buck_so_fast.html">What Makes Buck so Fast?</a></li><li class=""><a href="/about/showcase.html">Showcase</a></li><li class=""><a href="/concept/troubleshooting.html">Troubleshooting</a></li><li class=""><a href="/about/performance_tuning.html">Performance Tuning</a></li><li class=""><a href="/concept/faq.html">FAQ</a></li><li class=""><a href="/presentations/index.html">Learn More (Buck Presentations)</a></li></ul><h3>Concepts</h3><ul><li class=""><a href="/concept/build_rule.html">Build Rule</a></li><li class=""><a href="/concept/build_target.html">Build Target</a></li><li class=""><a href="/concept/build_file.html">Build File</a></li><li class=""><a href="/concept/buckjavaargs.html">.buckjavaargs</a></li><li class=""><a href="/concept/buckconfig.html">.buckconfig</a></li><li class=""><a href="/concept/build_target_pattern.html">Build Target Pattern</a></li><li class=""><a href="/concept/visibility.html">Visibility</a></li><li class=""><a href="/concept/http_cache_api.html">HTTP Cache API</a></li><li class=""><a href="/concept/rule_keys.html">Rule Keys</a></li></ul><h3>Build Rules</h3><ul><li><strong>Core</strong></li><li class=""><a href="/rule/command_alias.html">command_alias()</a></li><li class=""><a href="/rule/export_file.html">export_file()</a></li><li class=""><a href="/rule/genrule.html">genrule()</a></li><li class=""><a href="/rule/remote_file.html">remote_file()</a></li><li class=""><a href="/rule/worker_tool.html">worker_tool()</a></li><li class=""><a href="/rule/zip_file.html">zip_file()</a></li><li><strong>Android</strong></li><li class=""><a href="/rule/android_aar.html">android_aar()</a></li><li class=""><a href="/rule/android_binary.html">android_binary()</a></li><li class=""><a href="/rule/android_build_config.html">android_build_config()</a></li><li class=""><a href="/rule/android_instrumentation_apk.html">android_instrumentation_apk()</a></li><li class=""><a href="/rule/android_instrumentation_test.html">android_instrumentation_test()</a></li><li class=""><a href="/rule/android_library.html">android_library()</a></li><li class=""><a href="/rule/android_manifest.html">android_manifest()</a></li><li class=""><a href="/rule/android_prebuilt_aar.html">android_prebuilt_aar()</a></li><li class=""><a href="/rule/android_resource.html">android_resource()</a></li><li class=""><a href="/rule/apk_genrule.html">apk_genrule()</a></li><li class=""><a href="/rule/gen_aidl.html">gen_aidl()</a></li><li class=""><a href="/rule/keystore.html">keystore()</a></li><li class=""><a href="/rule/ndk_library.html">ndk_library()</a></li><li class=""><a href="/rule/prebuilt_jar.html">prebuilt_jar()</a></li><li class=""><a href="/rule/prebuilt_native_library.html">prebuilt_native_library()</a></li><li><strong>CXX</strong></li><li class=""><a href="/rule/cxx_binary.html">cxx_binary()</a></li><li class=""><a href="/rule/cxx_library.html">cxx_library()</a></li><li class=""><a href="/rule/cxx_precompiled_header.html">cxx_precompiled_header()</a></li><li class=""><a href="/rule/cxx_test.html">cxx_test()</a></li><li class=""><a href="/rule/prebuilt_cxx_library.html">prebuilt_cxx_library()</a></li><li class=""><a href="/rule/prebuilt_cxx_library_group.html">prebuilt_cxx_library_group()</a></li><li><strong>D</strong></li><li class=""><a href="/rule/d_binary.html">d_binary()</a></li><li class=""><a href="/rule/d_library.html">d_library()</a></li><li class=""><a href="/rule/d_test.html">d_test()</a></li><li><strong>Go</strong></li><li class=""><a href="/rule/go_binary.html">go_binary()</a></li><li class=""><a href="/rule/go_library.html">go_library()</a></li><li class=""><a href="/rule/go_test.html">go_test()</a></li><li><strong>Groovy</strong></li><li class=""><a href="/rule/groovy_library.html">groovy_library()</a></li><li><strong>Halide</strong></li><li class=""><a href="/rule/halide_library.html">halide_library()</a></li><li><strong>Haskell</strong></li><li class=""><a href="/rule/haskell_binary.html">haskell_binary()</a></li><li class=""><a href="/rule/haskell_library.html">haskell_library()</a></li><li class=""><a href="/rule/prebuilt_haskell_library.html">prebuilt_haskell_library()</a></li><li><strong>iOS</strong></li><li class=""><a href="/rule/apple_asset_catalog.html">apple_asset_catalog()</a></li><li class=""><a href="/rule/apple_binary.html">apple_binary()</a></li><li class=""><a href="/rule/apple_bundle.html">apple_bundle()</a></li><li class=""><a href="/rule/apple_library.html">apple_library()</a></li><li class=""><a href="/rule/apple_package.html">apple_package()</a></li><li class=""><a href="/rule/apple_resource.html">apple_resource()</a></li><li class=""><a href="/rule/apple_test.html">apple_test()</a></li><li class=""><a href="/rule/core_data_model.html">core_data_model()</a></li><li class=""><a href="/rule/prebuilt_apple_framework.html">prebuilt_apple_framework()</a></li><li><strong>Java</strong></li><li class=""><a href="/rule/java_binary.html">java_binary()</a></li><li class=""><a href="/rule/java_library.html">java_library()</a></li><li class=""><a href="/rule/java_test.html">java_test()</a></li><li class=""><a href="/rule/prebuilt_jar.html">prebuilt_jar()</a></li><li class=""><a href="/rule/prebuilt_native_library.html">prebuilt_native_library()</a></li><li><strong>Kotlin</strong></li><li class=""><a href="/rule/kotlin_library.html">kotlin_library()</a></li><li class=""><a href="/rule/kotlin_test.html">kotlin_test()</a></li><li><strong>Lua</strong></li><li class=""><a href="/rule/cxx_lua_extension.html">cxx_lua_extension()</a></li><li class=""><a href="/rule/lua_binary.html">lua_binary()</a></li><li class=""><a href="/rule/lua_library.html">lua_library()</a></li><li><strong>OCaml</strong></li><li class=""><a href="/rule/ocaml_binary.html">ocaml_binary()</a></li><li class=""><a href="/rule/ocaml_library.html">ocaml_library()</a></li><li><strong>Python</strong></li><li class=""><a href="/rule/prebuilt_python_library.html">prebuilt_python_library()</a></li><li class=""><a href="/rule/python_binary.html">python_binary()</a></li><li class=""><a href="/rule/python_library.html">python_library()</a></li><li class=""><a href="/rule/python_test.html">python_test()</a></li><li><strong>Rust</strong></li><li class=""><a href="/rule/rust_binary.html">rust_binary()</a></li><li class=""><a href="/rule/rust_library.html">rust_library()</a></li><li class=""><a href="/rule/rust_test.html">rust_test()</a></li><li class=""><a href="/rule/prebuilt_rust_library.html">prebuilt_rust_library()</a></li><li><strong>.Net</strong></li><li class=""><a href="/rule/csharp_library.html">csharp_library()</a></li><li class=""><a href="/rule/prebuilt_dotnet_library.html">prebuilt_dotnet_library()</a></li></ul><h3>Functions</h3><ul><li class=""><a href="/function/add_build_file_dep.html">add_build_file_dep()</a></li><li class=""><a href="/function/allow_unsafe_import.html">allow_unsafe_import()</a></li><li class=""><a href="/function/flatten_dicts.html">flatten_dicts()</a></li><li class=""><a href="/function/glob.html">glob()</a></li><li class=""><a href="/function/get_base_path.html">get_base_path()</a></li><li class=""><a href="/function/get_cell_name.html">get_cell_name()</a></li><li class=""><a href="/function/include_defs.html">include_defs()</a></li><li class=""><a href="/function/read_config.html">read_config()</a></li><li class=""><a href="/function/subdir_glob.html">subdir_glob()</a></li><li class=""><a href="/function/string_parameter_macros.html">String Parameter Macros</a></li></ul><h3>Commands</h3><ul><li class=""><a href="/command/common_parameters.html">Common Parameters</a></li><li class=""><a href="/command/audit.html">buck audit</a></li><li class=""><a href="/command/build.html">buck build</a></li><li class=""><a href="/command/clean.html">buck clean</a></li><li class=""><a href="/command/doctor.html">buck doctor</a></li><li class=""><a href="/command/fetch.html">buck fetch</a></li><li class=""><a href="/command/install.html">buck install</a></li><li class=""><a href="/command/project.html">buck project</a></li><li class=""><a href="/command/publish.html">buck publish</a></li><li class="navActiveItem"><a href="/command/query.html">buck query</a></li><li class=""><a href="/command/run.html">buck run</a></li><li class=""><a href="/command/root.html">buck root</a></li><li class=""><a href="/command/server.html">buck server</a></li><li class=""><a href="/command/suggest.html">buck suggest</a></li><li class=""><a href="/command/targets.html">buck targets</a></li><li class=""><a href="/command/test.html">buck test</a></li><li class=""><a href="/command/uninstall.html">buck uninstall</a></li><li class=""><a href="/command/buckd.html">buckd</a></li></ul><h3>Extending Buck</h3><ul><li class=""><a href="/extending/macros.html">Custom Macros</a></li><li class=""><a href="/extending/rules.html">Custom Rules</a></li></ul></nav></div></section><footer><div class='width'>&copy; Copyright Facebook, 2013 -</div></footer><!-- Algolia Search Code --><script type="text/javascript" src="https://cdn.jsdelivr.net/docsearch.js/1/docsearch.min.js"></script><script>
+docsearch({
+  apiKey: 'c25b7174e8f6161ce5fdd44bb0b95081',
+  indexName: 'buckbuild',
+  inputSelector: '#algolia-doc-search',
+  debug: false // Set debug to true if you want to inspect the dropdown
+});
+</script><!-- End Algolia Search Code --><script src="/google-code-prettify/prettify.js"></script><script>prettyPrint()</script></body></html>
