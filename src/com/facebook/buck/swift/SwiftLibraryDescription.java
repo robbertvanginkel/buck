@@ -19,9 +19,11 @@ package com.facebook.buck.swift;
 import static com.facebook.buck.cxx.CxxLibraryDescription.METADATA_TYPE;
 
 import com.facebook.buck.cxx.Archive;
+import com.facebook.buck.cxx.CxxDeps;
 import com.facebook.buck.cxx.CxxDescriptionEnhancer;
 import com.facebook.buck.cxx.CxxHeaders;
 import com.facebook.buck.cxx.CxxLibraryDescription;
+import com.facebook.buck.cxx.CxxLinkableEnhancer;
 import com.facebook.buck.cxx.CxxPreprocessables;
 import com.facebook.buck.cxx.CxxPreprocessorInput;
 import com.facebook.buck.cxx.CxxSymlinkTreeHeaders;
@@ -34,7 +36,9 @@ import com.facebook.buck.cxx.toolchain.HeaderMode;
 import com.facebook.buck.cxx.toolchain.HeaderVisibility;
 import com.facebook.buck.cxx.toolchain.LinkerMapMode;
 import com.facebook.buck.cxx.toolchain.StripStyle;
+import com.facebook.buck.cxx.toolchain.linker.Linker;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable;
+import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkableInput;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.model.BuildTargets;
@@ -48,13 +52,16 @@ import com.facebook.buck.rules.BuildRuleParams;
 import com.facebook.buck.rules.BuildRuleResolver;
 import com.facebook.buck.rules.CellPathResolver;
 import com.facebook.buck.rules.CommonDescriptionArg;
+import com.facebook.buck.rules.DefaultSourcePathResolver;
 import com.facebook.buck.rules.Description;
 import com.facebook.buck.rules.HasDeclaredDeps;
 import com.facebook.buck.rules.HasSrcs;
 import com.facebook.buck.rules.MetadataProvidingDescription;
 import com.facebook.buck.rules.SourcePath;
+import com.facebook.buck.rules.SourcePathResolver;
 import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.facebook.buck.rules.TargetGraph;
+import com.facebook.buck.rules.args.SourcePathArg;
 import com.facebook.buck.rules.coercer.FrameworkPath;
 import com.facebook.buck.rules.macros.StringWithMacros;
 import com.facebook.buck.util.RichStream;
@@ -171,6 +178,7 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
           cxxPlatform,
           compileBuildTarget,
           moduleName);
+      SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
       switch (type.get().getValue()) {
         case EXPORTED_HEADERS:
           ImmutableMap<Path, SourcePath> headers = ImmutableMap.of(
@@ -184,7 +192,6 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
               headers,
               HeaderVisibility.PUBLIC);
         case STATIC:
-          SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
           return Archive.from(
               buildTarget,
               projectFilesystem,
@@ -196,6 +203,46 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
               true
           );
         case SHARED:
+          BuildTarget sharedTarget =
+              CxxDescriptionEnhancer.createSharedLibraryBuildTarget(
+                  buildTarget, cxxPlatform.getFlavor(), Linker.LinkType.SHARED);
+          String sharedLibrarySoname =
+              CxxDescriptionEnhancer.getSharedLibrarySoname(
+                  Optional.of("lib" + moduleName + ".$(ext)"), buildTarget, cxxPlatform);
+          Path sharedLibraryPath =
+              CxxDescriptionEnhancer.getSharedLibraryPath(
+                  projectFilesystem, sharedTarget, sharedLibrarySoname);
+
+          SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+          SwiftRuntimeNativeLinkable swiftRuntimeNativeLinkable =
+              new SwiftRuntimeNativeLinkable(swiftPlatformFlavorDomain.getValue(cxxPlatform.getFlavor()));
+          CxxDeps cxxDeps = CxxDeps.builder().addDeps(args.getDeps()).build();
+          return CxxLinkableEnhancer.createCxxLinkableBuildRule(
+              cxxBuckConfig,
+              cxxPlatform,
+              projectFilesystem,
+              resolver,
+              pathResolver,
+              ruleFinder,
+              sharedTarget,
+              Linker.LinkType.SHARED,
+              Optional.of(sharedLibrarySoname),
+              sharedLibraryPath,
+              Linker.LinkableDepType.SHARED,
+              false,
+              RichStream.from(cxxDeps.get(resolver, cxxPlatform)).filter(NativeLinkable.class).toImmutableList(),
+              Optional.empty(),
+              Optional.empty(),
+              ImmutableSet.of(),
+              ImmutableSet.of(),
+              NativeLinkableInput.concat(ImmutableList.of(
+                  NativeLinkableInput.builder()
+                    .addAllArgs(SourcePathArg.from(swiftc.getSourcePathToObjectOutput()))
+                    .setFrameworks(args.getFrameworks())
+                    .setLibraries(args.getLibraries())
+                    .build(),
+                  swiftRuntimeNativeLinkable.getNativeLinkableInput(cxxPlatform, Linker.LinkableDepType.SHARED))),
+              Optional.empty());
         case MACH_O_BUNDLE:
         default:
           throw new RuntimeException("unhandled library build type: " + type.get());
