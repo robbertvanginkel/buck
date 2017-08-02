@@ -35,9 +35,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
+import org.immutables.value.Value;
 import java.nio.file.Path;
 import java.util.Optional;
-import org.immutables.value.Value;
 
 /** Contains platform independent settings for C/C++ rules. */
 public class CxxBuckConfig {
@@ -47,7 +47,7 @@ public class CxxBuckConfig {
 
   private static final long DEFAULT_MAX_TEST_OUTPUT_SIZE = 8096;
 
-  private final BuckConfig delegate;
+  public final BuckConfig delegate;
   private final String cxxSection;
 
   public static final String DEFAULT_FLAVOR_LIBRARY_TYPE = "type";

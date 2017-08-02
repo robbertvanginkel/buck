@@ -147,6 +147,10 @@ public class CxxLibraryDescription
   public static final FlavorDomain<HeaderMode> HEADER_MODE =
       FlavorDomain.from("C/C++ Header Mode", HeaderMode.class);
 
+  public CxxBuckConfig getCxxBuckConfig() {
+    return cxxBuckConfig;
+  }
+
   private final CxxBuckConfig cxxBuckConfig;
   private final Flavor defaultCxxFlavor;
   private final InferBuckConfig inferBuckConfig;
@@ -230,7 +234,7 @@ public class CxxLibraryDescription
         sandboxTree);
   }
 
-  private static ImmutableMap<CxxPreprocessAndCompile, SourcePath> requireObjects(
+  public static ImmutableMap<CxxPreprocessAndCompile, SourcePath> requireObjects(
       BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
       BuildRuleResolver ruleResolver,
@@ -240,7 +244,7 @@ public class CxxLibraryDescription
       CxxBuckConfig cxxBuckConfig,
       CxxPlatform cxxPlatform,
       CxxSourceRuleFactory.PicType pic,
-      CxxLibraryDescriptionArg args,
+      CommonArg args,
       ImmutableSet<BuildRule> deps,
       TransitiveCxxPreprocessorInputFunction transitivePreprocessorInputs) {
 
@@ -1053,30 +1057,38 @@ public class CxxLibraryDescription
 
           if (visibility.getValue() == HeaderVisibility.PUBLIC) {
 
-            // Add platform-agnostic headers.
-            queryMetadataCxxHeaders(
-                    resolver,
-                    baseTarget,
-                    CxxDescriptionEnhancer.getHeaderModeForPlatform(
-                        resolver,
-                        platform.getValue(),
-                        args.getXcodePublicHeadersSymlinks()
-                            .orElse(platform.getValue().getPublicHeadersSymlinksEnabled())))
-                .ifPresent(cxxPreprocessorInputBuilder::addIncludes);
+            if (args.isModular()) {
+              queryMetadataCxxHeaders(
+                  resolver,
+                  baseTarget.withAppendedFlavors(platform.getKey()),
+                  HeaderMode.SYMLINK_TREE_WITH_MODULEMAP)
+                  .ifPresent(cxxPreprocessorInputBuilder::addIncludes);
+            } else {
+              // Add platform-agnostic headers.
+              queryMetadataCxxHeaders(
+                  resolver,
+                  baseTarget,
+                  CxxDescriptionEnhancer.getHeaderModeForPlatform(
+                      resolver,
+                      platform.getValue(),
+                      args.getXcodePublicHeadersSymlinks()
+                          .orElse(platform.getValue().getPublicHeadersSymlinksEnabled())))
+                  .ifPresent(cxxPreprocessorInputBuilder::addIncludes);
 
-            // Add platform-specific headers.
-            if (!args.getExportedPlatformHeaders()
-                .getMatchingValues(platform.getKey().toString())
-                .isEmpty()) {
-              HeaderSymlinkTree symlinkTree =
-                  (HeaderSymlinkTree)
-                      resolver.requireRule(
-                          baseTarget
-                              .withoutFlavors(LIBRARY_TYPE.getFlavors())
-                              .withAppendedFlavors(
-                                  Type.EXPORTED_HEADERS.getFlavor(), platform.getKey()));
-              cxxPreprocessorInputBuilder.addIncludes(
-                  CxxSymlinkTreeHeaders.from(symlinkTree, CxxPreprocessables.IncludeType.LOCAL));
+              // Add platform-specific headers.
+              if (!args.getExportedPlatformHeaders()
+                  .getMatchingValues(platform.getKey().toString())
+                  .isEmpty()) {
+                HeaderSymlinkTree symlinkTree =
+                    (HeaderSymlinkTree)
+                        resolver.requireRule(
+                            baseTarget
+                                .withoutFlavors(LIBRARY_TYPE.getFlavors())
+                                .withAppendedFlavors(
+                                    Type.EXPORTED_HEADERS.getFlavor(), platform.getKey()));
+                cxxPreprocessorInputBuilder.addIncludes(
+                    CxxSymlinkTreeHeaders.from(symlinkTree, CxxPreprocessables.IncludeType.LOCAL));
+              }
             }
           }
 
@@ -1298,6 +1310,11 @@ public class CxxLibraryDescription
     @Value.Derived
     default CxxDeps getCxxDeps() {
       return CxxDeps.concat(getPrivateCxxDeps(), getExportedCxxDeps());
+    }
+
+    @Value.Default
+    default boolean isModular() {
+      return false;
     }
   }
 

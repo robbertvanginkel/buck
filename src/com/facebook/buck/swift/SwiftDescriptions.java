@@ -32,7 +32,7 @@ public class SwiftDescriptions {
   /** Utility class: do not instantiate. */
   private SwiftDescriptions() {}
 
-  static ImmutableSortedSet<SourcePath> filterSwiftSources(
+  public static ImmutableSortedSet<SourcePath> filterSwiftSources(
       SourcePathResolver sourcePathResolver, ImmutableSet<SourceWithFlags> srcs) {
     ImmutableSortedSet.Builder<SourcePath> swiftSrcsBuilder = ImmutableSortedSet.naturalOrder();
     for (SourceWithFlags source : srcs) {

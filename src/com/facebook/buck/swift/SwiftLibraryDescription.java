@@ -80,7 +80,7 @@ import java.util.regex.Pattern;
 
 public class SwiftLibraryDescription implements Description<SwiftLibraryDescriptionArg>, Flavored, MetadataProvidingDescription<SwiftLibraryDescriptionArg> {
 
-  static final Flavor SWIFT_COMPILE_FLAVOR = InternalFlavor.of("swift-compile");
+  public static final Flavor SWIFT_COMPILE_FLAVOR = InternalFlavor.of("swift-compile");
 
   public enum Type implements FlavorConvertible {
     EXPORTED_HEADERS(CxxDescriptionEnhancer.EXPORTED_HEADER_SYMLINK_TREE_FLAVOR),
@@ -173,11 +173,16 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
           params,
           resolver,
           cellRoots,
-          args,
           swiftPlatform,
+          swiftBuckConfig,
           cxxPlatform,
           compileBuildTarget,
-          moduleName);
+          moduleName,
+          args.getFrameworks(),
+          args.getSrcs(),
+          args.getEnableObjcInterop(),
+          args.getBridgingHeader(),
+          args.getCompilerFlags());
       SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
       switch (type.get().getValue()) {
         case EXPORTED_HEADERS:
@@ -264,16 +269,20 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
         args.getPreferredLinkage().orElse(NativeLinkable.Linkage.ANY));
   }
 
-  private SwiftCompile getSwiftCompile(
+  public static SwiftCompile getSwiftCompile(
       ProjectFilesystem projectFilesystem,
       BuildRuleParams params,
       BuildRuleResolver resolver,
       CellPathResolver cellRoots,
-      SwiftLibraryDescriptionArg args,
       SwiftPlatform swiftPlatform,
+      SwiftBuckConfig swiftBuckConfig,
       CxxPlatform cxxPlatform,
       BuildTarget compileBuildTarget,
-      String moduleName) {
+      String moduleName,
+      ImmutableSortedSet<FrameworkPath> frameworks,
+      ImmutableSortedSet<SourcePath> srcs,
+      Optional<Boolean> enableObjcInterop,
+      Optional<SourcePath> bridgingHeader, ImmutableList<StringWithMacros> compilerFlags) {
     return (SwiftCompile) resolver.computeIfAbsent(compileBuildTarget,
         (BuildTarget buildTarget) -> {
           CxxPreprocessorInput inputs =
@@ -300,19 +309,19 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
               projectFilesystem,
               params.copyAppendingExtraDeps(deps),
               swiftPlatform.getSwiftc(),
-              args.getFrameworks(),
+              frameworks,
               moduleName,
               BuildTargets.getGenPath(projectFilesystem, compileBuildTarget, "%s"),
-              args.getSrcs(),
+              srcs,
               Optional.empty(),
-              RichStream.from(args.getCompilerFlags())
+              RichStream.from(compilerFlags)
                   .map(
                       f ->
                           CxxDescriptionEnhancer.toStringWithMacrosArgs(
                               compileBuildTarget, cellRoots, resolver, cxxPlatform, f))
                   .toImmutableList(),
-              args.getEnableObjcInterop(),
-              args.getBridgingHeader(),
+              enableObjcInterop,
+              bridgingHeader,
               cxxPlatform.getCpp().resolve(resolver),
               cxxDeps
           );

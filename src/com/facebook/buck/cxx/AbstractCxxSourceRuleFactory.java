@@ -57,6 +57,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
+import org.immutables.value.Value;
 import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -68,7 +69,6 @@ import java.util.Optional;
 import java.util.SortedSet;
 import java.util.function.Function;
 import javax.annotation.concurrent.NotThreadSafe;
-import org.immutables.value.Value;
 
 @Value.Immutable
 @BuckStyleImmutable

@@ -16,15 +16,21 @@
 
 package com.facebook.buck.apple;
 
+import static com.facebook.buck.cxx.CxxLibraryDescription.HEADER_MODE;
 import static com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable.Linkage;
 
+import com.facebook.buck.cxx.Archive;
 import com.facebook.buck.cxx.CxxCompilationDatabase;
+import com.facebook.buck.cxx.CxxDeps;
 import com.facebook.buck.cxx.CxxDescriptionEnhancer;
 import com.facebook.buck.cxx.CxxLibraryDescription;
 import com.facebook.buck.cxx.CxxLibraryDescriptionArg;
+import com.facebook.buck.cxx.CxxPreprocessAndCompile;
+import com.facebook.buck.cxx.CxxSourceRuleFactory;
 import com.facebook.buck.cxx.CxxStrip;
 import com.facebook.buck.cxx.FrameworkDependencies;
 import com.facebook.buck.cxx.ProvidesLinkedBinaryDeps;
+import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.HeaderMode;
 import com.facebook.buck.cxx.toolchain.LinkerMapMode;
@@ -52,24 +58,32 @@ import com.facebook.buck.rules.SourcePathResolver;
 import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.facebook.buck.rules.TargetGraph;
 import com.facebook.buck.rules.TargetNode;
+import com.facebook.buck.swift.SwiftBuckConfig;
+import com.facebook.buck.swift.SwiftCompile;
+import com.facebook.buck.swift.SwiftDescriptions;
+import com.facebook.buck.swift.SwiftLibraryDescription;
 import com.facebook.buck.util.HumanReadableException;
 import com.facebook.buck.util.MoreCollectors;
+import com.facebook.buck.util.RichStream;
 import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.versions.Version;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableCollection;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
 import org.immutables.value.Value;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
+import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 public class AppleLibraryDescription
     implements Description<AppleLibraryDescriptionArg>,
@@ -414,11 +428,6 @@ public class AppleLibraryDescription
           ImmutableSortedSet<BuildTarget> extraCxxDeps,
           CxxLibraryDescription.TransitiveCxxPreprocessorInputFunction transitiveCxxDeps) {
 
-    CxxLibraryDescriptionArg.Builder delegateArg = CxxLibraryDescriptionArg.builder().from(args);
-    AppleDescriptions.populateCxxLibraryDescriptionArg(
-        pathResolver, delegateArg, args, buildTarget);
-
-
     // remove some flavors from cxx rule that don't affect the rule output
     BuildTarget unstrippedTarget =
         buildTarget.withoutFlavors(AppleDebugFormat.FLAVOR_DOMAIN.getFlavors());
@@ -426,10 +435,33 @@ public class AppleLibraryDescription
       unstrippedTarget = unstrippedTarget.withoutFlavors(LinkerMapMode.NO_LINKER_MAP.getFlavor());
     }
 
+    ImmutableSortedSet<SourcePath> swiftSources = SwiftDescriptions.filterSwiftSources(
+        pathResolver,
+        args.getSrcs());
+    if (!swiftSources.isEmpty()) {
+      Optional<BuildRule> buildRule = hijackForSwift(
+          buildTarget,
+          projectFilesystem,
+          params,
+          resolver,
+          cellRoots,
+          args,
+          linkableDepType,
+          blacklist,
+          transitiveCxxDeps);
+      if (buildRule.isPresent()) {
+        return buildRule.get();
+      }
+    }
+
     Optional<BuildRule> existingRule = resolver.getRuleOptional(unstrippedTarget);
     if (existingRule.isPresent()) {
       return existingRule.get();
     } else {
+      CxxLibraryDescriptionArg.Builder delegateArg = CxxLibraryDescriptionArg.builder().from(args);
+      AppleDescriptions.populateCxxLibraryDescriptionArg(
+          pathResolver, delegateArg, args, buildTarget);
+
       BuildRule rule =
           delegate.createBuildRule(
               unstrippedTarget,
@@ -445,6 +477,182 @@ public class AppleLibraryDescription
               transitiveCxxDeps);
       return resolver.addToIndex(rule);
     }
+  }
+
+  private <A extends AppleNativeTargetDescriptionArg> Optional<BuildRule> hijackForSwift(
+      BuildTarget buildTarget,
+      ProjectFilesystem projectFilesystem,
+      BuildRuleParams params,
+      BuildRuleResolver resolver,
+      CellPathResolver cellRoots,
+      A args,
+      Optional<Linker.LinkableDepType> linkableDepType,
+      ImmutableSet<BuildTarget> blacklist,
+      CxxLibraryDescription.TransitiveCxxPreprocessorInputFunction transitiveCxxPreprocessorInputFunction) {
+    Optional<Map.Entry<Flavor, Type>> type = LIBRARY_TYPE.getFlavorAndValue(buildTarget);
+    Optional<CxxPlatform> platform = delegate.getCxxPlatforms().getValue(buildTarget);
+    CxxDeps cxxDeps = CxxDeps.builder().addDeps(args.getCxxDeps()).build();
+
+    if (type.isPresent() && platform.isPresent()) {
+      BuildTarget untypedBuildTarget = buildTarget.withoutFlavors(type.get().getKey());
+      SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
+      SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
+      CxxPlatform cxxPlatform = platform.get();
+      final BuildTarget compileBuildTarget = untypedBuildTarget.withFlavors(SwiftLibraryDescription.SWIFT_COMPILE_FLAVOR, cxxPlatform.getFlavor());
+      SwiftCompile swiftCompile = SwiftLibraryDescription.getSwiftCompile(
+          projectFilesystem,
+          params,
+          resolver,
+          cellRoots,
+          appleCxxPlatformFlavorDomain.getValue(cxxPlatform.getFlavor()).getSwiftPlatform().get(),
+          new SwiftBuckConfig(delegate.getCxxBuckConfig().delegate),
+          cxxPlatform,
+          compileBuildTarget,
+          args.getHeaderPathPrefix().orElse(args.getName()),
+          args.getFrameworks(),
+          SwiftDescriptions.filterSwiftSources(
+              sourcePathResolver,
+              args.getSrcs()),
+          Optional.of(true),
+          Optional.empty(),
+          ImmutableList.of());
+
+      switch (type.get().getValue()) {
+        case HEADERS:
+          return Optional.of(createHeaderSymlinkTreeBuildRule(
+              untypedBuildTarget, projectFilesystem, resolver, platform.get(), args));
+        case EXPORTED_HEADERS:
+          return Optional.of(createExportedPlatformHeaderSymlinkTreeBuildRule(
+              untypedBuildTarget, projectFilesystem, resolver, platform.get(), args, swiftCompile));
+        case SHARED:
+          return Optional.of(createSharedLibraryBuildRule(
+              untypedBuildTarget,
+              projectFilesystem,
+              resolver,
+              cellRoots,
+              delegate.getCxxBuckConfig(),
+              platform.get(),
+              args,
+              cxxDeps.get(resolver, platform.get()),
+              Linker.LinkType.SHARED,
+              linkableDepType.orElse(Linker.LinkableDepType.SHARED),
+              Optional.empty(),
+              blacklist,
+              transitiveCxxPreprocessorInputFunction));
+        case STATIC:
+        case STATIC_PIC:
+          return Optional.of(createStaticLibraryBuildRule(
+              untypedBuildTarget,
+              projectFilesystem,
+              resolver,
+              cellRoots,
+              delegate.getCxxBuckConfig(),
+              platform.get(),
+              args,
+              cxxDeps.get(resolver, platform.get()),
+              transitiveCxxPreprocessorInputFunction,
+              swiftCompile));
+        // $CASES-OMITTED$
+        default:
+      }
+      throw new RuntimeException("unhandled library build type: " + type.get());
+    }
+    return Optional.empty();
+  }
+
+  private <A extends AppleNativeTargetDescriptionArg> BuildRule createStaticLibraryBuildRule(
+      BuildTarget untypedBuildTarget,
+      ProjectFilesystem projectFilesystem,
+      BuildRuleResolver resolver,
+      CellPathResolver cellRoots,
+      CxxBuckConfig cxxBuckConfig,
+      CxxPlatform cxxPlatform,
+      A args,
+      ImmutableSet<BuildRule> deps,
+      CxxLibraryDescription.TransitiveCxxPreprocessorInputFunction transitiveCxxPreprocessorInputFunction,
+      SwiftCompile swiftCompile) {
+    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
+    SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
+    CxxSourceRuleFactory.PicType pic = CxxSourceRuleFactory.PicType.PIC;
+
+    // Create rules for compiling the object files.
+    ImmutableMap<CxxPreprocessAndCompile, SourcePath> objects =
+        CxxLibraryDescription.requireObjects(
+            untypedBuildTarget,
+            projectFilesystem,
+            resolver,
+            sourcePathResolver,
+            ruleFinder,
+            cellRoots,
+            cxxBuckConfig,
+            cxxPlatform,
+            pic,
+            args,
+            deps,
+            transitiveCxxPreprocessorInputFunction);
+
+    // Write a build rule to create the archive for this C/C++ library.
+    BuildTarget staticTarget =
+        CxxDescriptionEnhancer.createStaticLibraryBuildTarget(
+            untypedBuildTarget, cxxPlatform.getFlavor(), pic);
+    Path staticLibraryPath =
+        CxxDescriptionEnhancer.getStaticLibraryPath(
+            projectFilesystem,
+            untypedBuildTarget,
+            cxxPlatform.getFlavor(),
+            pic,
+            cxxPlatform.getStaticLibraryExtension());
+    return Archive.from(
+        staticTarget,
+        projectFilesystem,
+        ruleFinder,
+        cxxPlatform,
+        cxxBuckConfig.getArchiveContents(),
+        staticLibraryPath,
+        RichStream.from(objects.values())
+            .concat(RichStream.of(swiftCompile.getSourcePathToObjectOutput()))
+            .toImmutableList(),
+        /* cacheable */ true);
+  }
+
+  @SuppressWarnings("unused")
+  private <A extends AppleNativeTargetDescriptionArg> BuildRule createSharedLibraryBuildRule(
+      BuildTarget untypedBuildTarget,
+      ProjectFilesystem projectFilesystem,
+      BuildRuleResolver resolver,
+      CellPathResolver cellRoots,
+      CxxBuckConfig cxxBuckConfig,
+      CxxPlatform cxxPlatform,
+      A args,
+      ImmutableSet<BuildRule> buildRules,
+      Linker.LinkType shared,
+      Linker.LinkableDepType linkableDepType,
+      Optional<Object> empty,
+      ImmutableSet<BuildTarget> blacklist,
+      CxxLibraryDescription.TransitiveCxxPreprocessorInputFunction transitiveCxxPreprocessorInputFunction) {
+    throw new NotImplementedException();
+  }
+
+  @SuppressWarnings("unused")
+  private <A extends AppleNativeTargetDescriptionArg> BuildRule createHeaderSymlinkTreeBuildRule(
+      BuildTarget untypedBuildTarget,
+      ProjectFilesystem projectFilesystem,
+      BuildRuleResolver resolver,
+      CxxPlatform cxxPlatform,
+      A args) {
+    throw new NotImplementedException();
+  }
+
+  @SuppressWarnings("unused")
+  private <A extends AppleNativeTargetDescriptionArg> BuildRule createExportedPlatformHeaderSymlinkTreeBuildRule(
+      BuildTarget untypedBuildTarget,
+      ProjectFilesystem projectFilesystem,
+      BuildRuleResolver resolver,
+      CxxPlatform cxxPlatform,
+      A args,
+      SwiftCompile swiftCompile) {
+    throw new NotImplementedException();
+
   }
 
   private boolean shouldWrapIntoDebuggableBinary(BuildTarget buildTarget, BuildRule buildRule) {
@@ -468,16 +676,13 @@ public class AppleLibraryDescription
       Class<U> metadataClass) {
 
     // If this is a modular apple_library, always do symlinktree with modulemap
-    if (args instanceof AbstractAppleLibraryDescriptionArg) {
-      AbstractAppleLibraryDescriptionArg casted = (AbstractAppleLibraryDescriptionArg) args;
-      if (casted.isModular() &&
-          buildTarget.getFlavors().contains(CxxLibraryDescription.MetadataType.CXX_HEADERS.getFlavor())) {
-        Map.Entry<Flavor, HeaderMode> headerMode =
-            CxxLibraryDescription.HEADER_MODE.getFlavorAndValue(buildTarget).get();
-        if (headerMode.getValue() != HeaderMode.SYMLINK_TREE_WITH_MODULEMAP) {
-          buildTarget = buildTarget.withoutFlavors(headerMode.getKey())
-              .withAppendedFlavors(HeaderMode.SYMLINK_TREE_WITH_MODULEMAP.getFlavor());
-        }
+    if (args.isModular() &&
+        buildTarget.getFlavors().contains(CxxLibraryDescription.MetadataType.CXX_HEADERS.getFlavor())) {
+      Map.Entry<Flavor, HeaderMode> headerMode =
+          HEADER_MODE.getFlavorAndValue(buildTarget).get();
+      if (headerMode.getValue() != HeaderMode.SYMLINK_TREE_WITH_MODULEMAP) {
+        buildTarget = buildTarget.withoutFlavors(headerMode.getKey())
+            .withAppendedFlavors(HeaderMode.SYMLINK_TREE_WITH_MODULEMAP.getFlavor());
       }
     }
     // Forward to C/C++ library description.
@@ -586,10 +791,5 @@ public class AppleLibraryDescription
     Optional<SourcePath> getInfoPlist();
 
     ImmutableMap<String, String> getInfoPlistSubstitutions();
-
-    @Value.Default
-    default boolean isModular() {
-      return false;
-    }
   }
 }
