@@ -79,7 +79,7 @@ public class SwiftCompile extends AbstractBuildRuleWithDeclaredAndExtraDeps {
   private final boolean enableObjcInterop;
   private final Optional<SourcePath> bridgingHeader;
   private final SwiftBuckConfig swiftBuckConfig;
-  @AddToRuleKey private final Preprocessor cPreprocessor;
+  @AddToRuleKey(stringify = true) private final Preprocessor cPreprocessor;
 
   private final PreprocessorFlags cxxDeps;
 
@@ -126,7 +126,7 @@ public class SwiftCompile extends AbstractBuildRuleWithDeclaredAndExtraDeps {
   @Override
   public void appendToRuleKey(RuleKeyObjectSink sink) {
     super.appendToRuleKey(sink);
-    cxxDeps.appendToRuleKey(sink);
+//    cxxDeps.appendToRuleKey(sink);
   }
 
   private void performChecks(BuildTarget buildTarget) {

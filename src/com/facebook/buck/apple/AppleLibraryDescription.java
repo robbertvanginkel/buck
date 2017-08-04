@@ -26,18 +26,24 @@ import com.facebook.buck.cxx.CxxDescriptionEnhancer;
 import com.facebook.buck.cxx.CxxLibraryDescription;
 import com.facebook.buck.cxx.CxxLibraryDescriptionArg;
 import com.facebook.buck.cxx.CxxPreprocessAndCompile;
+import com.facebook.buck.cxx.CxxPreprocessables;
+import com.facebook.buck.cxx.CxxPreprocessorInput;
 import com.facebook.buck.cxx.CxxSourceRuleFactory;
 import com.facebook.buck.cxx.CxxStrip;
+import com.facebook.buck.cxx.CxxSymlinkTreeHeaders;
 import com.facebook.buck.cxx.FrameworkDependencies;
 import com.facebook.buck.cxx.ProvidesLinkedBinaryDeps;
 import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.HeaderMode;
+import com.facebook.buck.cxx.toolchain.HeaderSymlinkTree;
+import com.facebook.buck.cxx.toolchain.HeaderVisibility;
 import com.facebook.buck.cxx.toolchain.LinkerMapMode;
 import com.facebook.buck.cxx.toolchain.StripStyle;
 import com.facebook.buck.cxx.toolchain.linker.Linker;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.model.BuildTarget;
+import com.facebook.buck.model.BuildTargets;
 import com.facebook.buck.model.Either;
 import com.facebook.buck.model.Flavor;
 import com.facebook.buck.model.FlavorConvertible;
@@ -58,6 +64,8 @@ import com.facebook.buck.rules.SourcePathResolver;
 import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.facebook.buck.rules.TargetGraph;
 import com.facebook.buck.rules.TargetNode;
+import com.facebook.buck.rules.macros.Macro;
+import com.facebook.buck.rules.macros.StringWithMacros;
 import com.facebook.buck.swift.SwiftBuckConfig;
 import com.facebook.buck.swift.SwiftCompile;
 import com.facebook.buck.swift.SwiftDescriptions;
@@ -74,11 +82,13 @@ import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
 import org.immutables.value.Value;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -93,9 +103,12 @@ public class AppleLibraryDescription
         ImplicitFlavorsInferringDescription,
         MetadataProvidingDescription<AppleLibraryDescriptionArg> {
 
+  public static final Flavor OBJC_HEADER_SYMLINK_TREE_FLAVOR = InternalFlavor.of("objc-headers");
+
   @SuppressWarnings("PMD") // PMD doesn't understand method references
   private static final Set<Flavor> SUPPORTED_FLAVORS =
       ImmutableSet.of(
+          OBJC_HEADER_SYMLINK_TREE_FLAVOR,
           CxxCompilationDatabase.COMPILATION_DATABASE,
           CxxCompilationDatabase.UBER_COMPILATION_DATABASE,
           CxxDescriptionEnhancer.HEADER_SYMLINK_TREE_FLAVOR,
@@ -113,6 +126,7 @@ public class AppleLibraryDescription
           InternalFlavor.of("default"));
 
   private enum Type implements FlavorConvertible {
+    OBJC_MODULE(OBJC_HEADER_SYMLINK_TREE_FLAVOR),
     HEADERS(CxxDescriptionEnhancer.HEADER_SYMLINK_TREE_FLAVOR),
     EXPORTED_HEADERS(CxxDescriptionEnhancer.EXPORTED_HEADER_SYMLINK_TREE_FLAVOR),
     SANDBOX(CxxDescriptionEnhancer.SANDBOX_TREE_FLAVOR),
@@ -270,7 +284,6 @@ public class AppleLibraryDescription
   }
 
   /**
-   * @param targetGraph The target graph.
    * @param projectFilesystem
    * @param cellRoots The roots of known cells.
    * @param bundleLoader The binary in which the current library will be (dynamically) loaded into.
@@ -497,8 +510,35 @@ public class AppleLibraryDescription
       BuildTarget untypedBuildTarget = buildTarget.withoutFlavors(type.get().getKey());
       SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
       SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
+      if (type.get().getValue() == Type.OBJC_MODULE) {
+        String moduleName = args.getHeaderPathPrefix().orElse(args.getName());
+        Path headerPathPrefix = Paths.get(moduleName);
+        ImmutableSortedMap<String, SourcePath> headerMap =
+            AppleDescriptions.convertAppleHeadersToPublicCxxHeaders(
+                buildTarget, sourcePathResolver::getRelativePath, headerPathPrefix, args);
+        ImmutableMap<Path, SourcePath> cxxHeaders = CxxPreprocessables.resolveHeaderMap(
+            args.getHeaderNamespace().map(Paths::get).orElse(buildTarget.getBasePath()),
+            headerMap);
+        return Optional.of(
+            CxxPreprocessables.createHeaderSymlinkTreeBuildRule(
+                buildTarget,
+                projectFilesystem,
+                BuildTargets.getGenPath(projectFilesystem, buildTarget, "%s"),
+                cxxHeaders,
+                HeaderMode.SYMLINK_TREE_WITH_MODULEMAP));
+      }
       CxxPlatform cxxPlatform = platform.get();
       final BuildTarget compileBuildTarget = untypedBuildTarget.withFlavors(SwiftLibraryDescription.SWIFT_COMPILE_FLAVOR, cxxPlatform.getFlavor());
+      String moduleName = args.getHeaderPathPrefix().orElse(args.getName());
+
+      BuildRule underlyingModuleRule = resolver.requireRule(
+          untypedBuildTarget.withAppendedFlavors(OBJC_HEADER_SYMLINK_TREE_FLAVOR));
+      CxxPreprocessorInput.Builder builder = CxxPreprocessorInput.builder();
+      builder.addIncludes(CxxSymlinkTreeHeaders.from((HeaderSymlinkTree) underlyingModuleRule, CxxPreprocessables.IncludeType.LOCAL));
+      CxxPreprocessorInput underlyingModule = builder.build();
+
+      ImmutableList<Either<String, Macro>> importArg = ImmutableList.of(Either.ofLeft(
+          "-import-underlying-module"));
       SwiftCompile swiftCompile = SwiftLibraryDescription.getSwiftCompile(
           projectFilesystem,
           params,
@@ -508,14 +548,15 @@ public class AppleLibraryDescription
           new SwiftBuckConfig(delegate.getCxxBuckConfig().delegate),
           cxxPlatform,
           compileBuildTarget,
-          args.getHeaderPathPrefix().orElse(args.getName()),
+          moduleName,
           args.getFrameworks(),
           SwiftDescriptions.filterSwiftSources(
               sourcePathResolver,
               args.getSrcs()),
           Optional.of(true),
           Optional.empty(),
-          ImmutableList.of());
+          ImmutableList.of(StringWithMacros.of(importArg)),
+          Optional.of(underlyingModule));
 
       switch (type.get().getValue()) {
         case HEADERS:
@@ -523,7 +564,7 @@ public class AppleLibraryDescription
               untypedBuildTarget, projectFilesystem, resolver, platform.get(), args));
         case EXPORTED_HEADERS:
           return Optional.of(createExportedPlatformHeaderSymlinkTreeBuildRule(
-              untypedBuildTarget, projectFilesystem, resolver, platform.get(), args, swiftCompile));
+              untypedBuildTarget, projectFilesystem, resolver, args, swiftCompile, moduleName));
         case SHARED:
           return Optional.of(createSharedLibraryBuildRule(
               untypedBuildTarget,
@@ -643,15 +684,37 @@ public class AppleLibraryDescription
     throw new NotImplementedException();
   }
 
-  @SuppressWarnings("unused")
   private <A extends AppleNativeTargetDescriptionArg> BuildRule createExportedPlatformHeaderSymlinkTreeBuildRule(
-      BuildTarget untypedBuildTarget,
+      BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
       BuildRuleResolver resolver,
-      CxxPlatform cxxPlatform,
       A args,
-      SwiftCompile swiftCompile) {
-    throw new NotImplementedException();
+      SwiftCompile swiftCompile,
+      String moduleName) {
+    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
+    SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
+    Path headerPathPrefix = Paths.get(moduleName);
+    ImmutableSortedMap<String, SourcePath> headerMap =
+        AppleDescriptions.convertAppleHeadersToPublicCxxHeaders(
+            buildTarget, sourcePathResolver::getRelativePath, headerPathPrefix, args);
+    ImmutableMap<Path, SourcePath> cxxHeaders = CxxPreprocessables.resolveHeaderMap(
+        args.getHeaderNamespace().map(Paths::get).orElse(buildTarget.getBasePath()),
+        headerMap);
+
+    ImmutableMap<Path, SourcePath> swiftHeaders = ImmutableMap.of(
+        Paths.get(moduleName, moduleName + "-Swift.h"), swiftCompile.getSourcePathToObjCHeaderOutput(),
+        Paths.get(moduleName + ".swiftmodule"), swiftCompile.getSourcePathToSwiftModuleOutput()
+    );
+    ImmutableMap<Path, SourcePath> headers = ImmutableMap.<Path, SourcePath>builder()
+        .putAll(swiftHeaders)
+        .putAll(cxxHeaders)
+        .build();
+    return CxxDescriptionEnhancer.createHeaderSymlinkTree(
+        buildTarget,
+        projectFilesystem,
+        HeaderMode.SYMLINK_TREE_WITH_MODULEMAP,
+        headers,
+        HeaderVisibility.PUBLIC);
 
   }
 

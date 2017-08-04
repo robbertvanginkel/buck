@@ -182,7 +182,8 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
           args.getSrcs(),
           args.getEnableObjcInterop(),
           args.getBridgingHeader(),
-          args.getCompilerFlags());
+          args.getCompilerFlags(),
+          Optional.empty());
       SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
       switch (type.get().getValue()) {
         case EXPORTED_HEADERS:
@@ -282,13 +283,20 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
       ImmutableSortedSet<FrameworkPath> frameworks,
       ImmutableSortedSet<SourcePath> srcs,
       Optional<Boolean> enableObjcInterop,
-      Optional<SourcePath> bridgingHeader, ImmutableList<StringWithMacros> compilerFlags) {
+      Optional<SourcePath> bridgingHeader,
+      ImmutableList<StringWithMacros> compilerFlags,
+      Optional<CxxPreprocessorInput> underlyingModule) {
     return (SwiftCompile) resolver.computeIfAbsent(compileBuildTarget,
         (BuildTarget buildTarget) -> {
+          ImmutableSet<CxxPreprocessorInput> inputs1 = RichStream.from(
+              CxxPreprocessables.getTransitiveCxxPreprocessorInput(
+                  cxxPlatform, params.getBuildDeps()))
+              .concat(RichStream.of(underlyingModule.orElse(CxxPreprocessorInput.EMPTY)))
+              .toImmutableSet();
           CxxPreprocessorInput inputs =
-              CxxPreprocessorInput.concat(
-                  CxxPreprocessables.getTransitiveCxxPreprocessorInput(
-                      cxxPlatform, params.getBuildDeps()));
+              CxxPreprocessorInput
+                  .concat(inputs1);
+
           SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
           Iterable<BuildRule> deps = inputs.getDeps(resolver, ruleFinder);
 

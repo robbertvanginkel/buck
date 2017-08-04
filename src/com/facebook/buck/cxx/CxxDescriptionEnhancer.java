@@ -16,6 +16,8 @@
 
 package com.facebook.buck.cxx;
 
+import static com.facebook.buck.swift.SwiftDescriptions.SWIFT_EXTENSION;
+
 import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.HeaderMode;
@@ -28,6 +30,7 @@ import com.facebook.buck.cxx.toolchain.linker.Linkers;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkableInput;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkables;
+import com.facebook.buck.io.MorePaths;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.json.JsonConcatenate;
 import com.facebook.buck.log.Logger;
@@ -442,6 +445,15 @@ public class CxxDescriptionEnhancer {
       CxxPlatform cxxPlatform,
       ImmutableSortedSet<SourceWithFlags> srcs,
       PatternMatchedCollection<ImmutableSortedSet<SourceWithFlags>> platformSrcs) {
+    ImmutableSortedSet.Builder<SourceWithFlags> nonSwiftSrcs = ImmutableSortedSet.naturalOrder();
+    for (SourceWithFlags src : srcs) {
+      if (!MorePaths.getFileExtension(pathResolver.getAbsolutePath(src.getSourcePath()))
+          .equalsIgnoreCase(SWIFT_EXTENSION)) {
+        nonSwiftSrcs.add(src);
+      }
+    }
+    srcs = nonSwiftSrcs.build();
+
     ImmutableMap.Builder<String, SourceWithFlags> sources = ImmutableMap.builder();
     putAllSources(buildTarget, resolver, ruleFinder, pathResolver, cxxPlatform, srcs, sources);
     for (ImmutableSortedSet<SourceWithFlags> sourcesWithFlags :
