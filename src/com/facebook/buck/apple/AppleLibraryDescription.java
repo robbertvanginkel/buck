@@ -517,7 +517,7 @@ public class AppleLibraryDescription
             AppleDescriptions.convertAppleHeadersToPublicCxxHeaders(
                 buildTarget, sourcePathResolver::getRelativePath, headerPathPrefix, args);
         ImmutableMap<Path, SourcePath> cxxHeaders = CxxPreprocessables.resolveHeaderMap(
-            args.getHeaderNamespace().map(Paths::get).orElse(buildTarget.getBasePath()),
+            Paths.get(""),
             headerMap);
         return Optional.of(
             CxxPreprocessables.createHeaderSymlinkTreeBuildRule(
@@ -539,6 +539,12 @@ public class AppleLibraryDescription
 
       ImmutableList<Either<String, Macro>> importArg = ImmutableList.of(Either.ofLeft(
           "-import-underlying-module"));
+      ImmutableList<StringWithMacros> compilerFlags =
+          RichStream
+              .of(StringWithMacros.of(importArg))
+              .concat(RichStream.from(args.getSwiftCompilerFlags()))
+              .toImmutableList();
+      args.getSwiftCompilerFlags();
       SwiftCompile swiftCompile = SwiftLibraryDescription.getSwiftCompile(
           projectFilesystem,
           params,
@@ -555,7 +561,7 @@ public class AppleLibraryDescription
               args.getSrcs()),
           Optional.of(true),
           Optional.empty(),
-          ImmutableList.of(StringWithMacros.of(importArg)),
+          compilerFlags,
           Optional.of(underlyingModule));
 
       switch (type.get().getValue()) {
@@ -592,7 +598,8 @@ public class AppleLibraryDescription
               args,
               cxxDeps.get(resolver, platform.get()),
               transitiveCxxPreprocessorInputFunction,
-              swiftCompile));
+              swiftCompile,
+              moduleName));
         // $CASES-OMITTED$
         default:
       }
@@ -611,10 +618,11 @@ public class AppleLibraryDescription
       A args,
       ImmutableSet<BuildRule> deps,
       CxxLibraryDescription.TransitiveCxxPreprocessorInputFunction transitiveCxxPreprocessorInputFunction,
-      SwiftCompile swiftCompile) {
+      SwiftCompile swiftCompile,
+      String moduleName) {
     SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
     SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
-    CxxSourceRuleFactory.PicType pic = CxxSourceRuleFactory.PicType.PIC;
+    CxxSourceRuleFactory.PicType pic = CxxSourceRuleFactory.PicType.PDC;
 
     // Create rules for compiling the object files.
     ImmutableMap<CxxPreprocessAndCompile, SourcePath> objects =
@@ -630,7 +638,8 @@ public class AppleLibraryDescription
             pic,
             args,
             deps,
-            transitiveCxxPreprocessorInputFunction);
+            transitiveCxxPreprocessorInputFunction,
+            Optional.of(moduleName));
 
     // Write a build rule to create the archive for this C/C++ library.
     BuildTarget staticTarget =
@@ -698,7 +707,7 @@ public class AppleLibraryDescription
         AppleDescriptions.convertAppleHeadersToPublicCxxHeaders(
             buildTarget, sourcePathResolver::getRelativePath, headerPathPrefix, args);
     ImmutableMap<Path, SourcePath> cxxHeaders = CxxPreprocessables.resolveHeaderMap(
-        args.getHeaderNamespace().map(Paths::get).orElse(buildTarget.getBasePath()),
+        Paths.get(""),
         headerMap);
 
     ImmutableMap<Path, SourcePath> swiftHeaders = ImmutableMap.of(

@@ -31,6 +31,7 @@ import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkableInput;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.log.Logger;
 import com.facebook.buck.model.BuildTarget;
+import com.facebook.buck.model.Either;
 import com.facebook.buck.model.Flavor;
 import com.facebook.buck.model.FlavorConvertible;
 import com.facebook.buck.model.FlavorDomain;
@@ -246,7 +247,8 @@ public class CxxLibraryDescription
       CxxSourceRuleFactory.PicType pic,
       CommonArg args,
       ImmutableSet<BuildRule> deps,
-      TransitiveCxxPreprocessorInputFunction transitivePreprocessorInputs) {
+      TransitiveCxxPreprocessorInputFunction transitivePreprocessorInputs,
+      Optional<String> moduleName) {
 
     boolean shouldCreatePrivateHeadersSymlinks =
         args.getXcodePrivateHeadersSymlinks()
@@ -274,12 +276,21 @@ public class CxxLibraryDescription
           CxxDescriptionEnhancer.createSandboxTree(buildTarget, ruleResolver, cxxPlatform);
     }
 
+    ImmutableList<StringWithMacros> cflags = args.getCompilerFlags();
+    if (args.isModular()) {
+      cflags = ImmutableList.<StringWithMacros>builder()
+          .add(StringWithMacros.of(ImmutableList.of(Either.ofLeft("-fmodule-name"))))
+          .add(StringWithMacros.of(ImmutableList.of(Either.ofLeft(moduleName.orElse(args.getName())))))
+          .addAll(cflags)
+          .build();
+    }
+
     // Create rule to build the object files.
     ImmutableMultimap<CxxSource.Type, Arg> compilerFlags =
         ImmutableListMultimap.copyOf(
             Multimaps.transformValues(
                 CxxFlags.getLanguageFlagsWithMacros(
-                    args.getCompilerFlags(),
+                    cflags,
                     args.getPlatformCompilerFlags(),
                     args.getLangCompilerFlags(),
                     cxxPlatform),
@@ -345,7 +356,7 @@ public class CxxLibraryDescription
             CxxSourceRuleFactory.PicType.PIC,
             arg,
             deps,
-            transitiveCxxPreprocessorInputFunction);
+            transitiveCxxPreprocessorInputFunction, Optional.empty());
 
     return NativeLinkableInput.builder()
         .addAllArgs(
@@ -408,7 +419,7 @@ public class CxxLibraryDescription
             CxxSourceRuleFactory.PicType.PIC,
             args,
             deps,
-            transitiveCxxPreprocessorInputFunction);
+            transitiveCxxPreprocessorInputFunction, soname);
 
     // Setup the rules to link the shared library.
     BuildTarget sharedTarget =
@@ -563,7 +574,7 @@ public class CxxLibraryDescription
             pic,
             args,
             deps,
-            transitiveCxxPreprocessorInputFunction);
+            transitiveCxxPreprocessorInputFunction, Optional.empty());
 
     // Write a build rule to create the archive for this C/C++ library.
     BuildTarget staticTarget =
@@ -738,7 +749,7 @@ public class CxxLibraryDescription
               CxxSourceRuleFactory.PicType.PIC,
               args,
               cxxDeps.get(resolver, cxxPlatform),
-              transitiveCxxPreprocessorInputFunction);
+              transitiveCxxPreprocessorInputFunction, Optional.empty());
       return CxxCompilationDatabase.createCompilationDatabase(
           buildTarget, projectFilesystem, objects.keySet());
     } else if (buildTarget
@@ -782,8 +793,13 @@ public class CxxLibraryDescription
           return createHeaderSymlinkTreeBuildRule(
               untypedBuildTarget, projectFilesystem, resolver, platform.get(), args);
         case EXPORTED_HEADERS:
-          return createExportedPlatformHeaderSymlinkTreeBuildRule(
-              untypedBuildTarget, projectFilesystem, resolver, platform.get(), args);
+          if (args.isModular()) {
+            return createExportedHeaderSymlinkTreeBuildRule(
+                untypedBuildTarget, projectFilesystem, resolver, HeaderMode.SYMLINK_TREE_WITH_MODULEMAP, args);
+          } else {
+            return createExportedPlatformHeaderSymlinkTreeBuildRule(
+                untypedBuildTarget, projectFilesystem, resolver, platform.get(), args);
+          }
         case SHARED:
           return createSharedLibraryBuildRule(
               untypedBuildTarget,
@@ -850,13 +866,14 @@ public class CxxLibraryDescription
 
     boolean hasObjectsForAnyPlatform = !args.getSrcs().isEmpty();
     Predicate<CxxPlatform> hasObjects;
-    if (hasObjectsForAnyPlatform) {
-      hasObjects = x -> true;
-    } else {
-      hasObjects =
-          input ->
-              !args.getPlatformSrcs().getMatchingValues(input.getFlavor().toString()).isEmpty();
-    }
+    hasObjects = x -> true;
+//    if (hasObjectsForAnyPlatform) {
+//      hasObjects = x -> true;
+//    } else {
+//      hasObjects =
+//          input ->
+//              !args.getPlatformSrcs().getMatchingValues(input.getFlavor().toString()).isEmpty();
+//    }
 
     // Otherwise, we return the generic placeholder of this library, that dependents can use
     // get the real build rules via querying the action graph.

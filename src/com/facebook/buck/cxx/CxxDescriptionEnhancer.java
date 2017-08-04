@@ -152,10 +152,11 @@ public class CxxDescriptionEnhancer {
       ImmutableMap<Path, SourcePath> headers,
       HeaderVisibility headerVisibility,
       boolean shouldCreateHeadersSymlinks) {
+    Optional<HeaderMode> headerMode = HeaderMode.HEADER_MODE_FLAVOR_DOMAIN.getValue(buildTarget);
     return createHeaderSymlinkTree(
         buildTarget,
         projectFilesystem,
-        getHeaderModeForPlatform(resolver, cxxPlatform, shouldCreateHeadersSymlinks),
+        headerMode.orElse(getHeaderModeForPlatform(resolver, cxxPlatform, shouldCreateHeadersSymlinks)),
         headers,
         headerVisibility,
         cxxPlatform.getFlavor());

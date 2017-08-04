@@ -18,6 +18,7 @@ package com.facebook.buck.cxx.toolchain;
 
 import com.facebook.buck.model.Flavor;
 import com.facebook.buck.model.FlavorConvertible;
+import com.facebook.buck.model.FlavorDomain;
 import com.facebook.buck.model.InternalFlavor;
 import com.google.common.base.CaseFormat;
 
@@ -54,4 +55,7 @@ public enum HeaderMode implements FlavorConvertible {
   public Flavor getFlavor() {
     return flavor;
   }
+
+  public static final FlavorDomain<HeaderMode> HEADER_MODE_FLAVOR_DOMAIN =
+      FlavorDomain.from("HeaderModes Type", HeaderMode.class);
 }
