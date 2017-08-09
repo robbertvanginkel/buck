@@ -64,6 +64,7 @@ public class SwiftCompile extends AbstractBuildRuleWithDeclaredAndExtraDeps {
 
   @AddToRuleKey(stringify = true)
   private final Path outputPath;
+  private boolean moduleOnly;
 
   private final Path modulePath;
   private final Path objectPath;
@@ -99,13 +100,15 @@ public class SwiftCompile extends AbstractBuildRuleWithDeclaredAndExtraDeps {
       Optional<Boolean> enableObjcInterop,
       Optional<SourcePath> bridgingHeader,
       Preprocessor preprocessor,
-      PreprocessorFlags cxxDeps) {
+      PreprocessorFlags cxxDeps,
+      boolean moduleOnly) {
     super(buildTarget, projectFilesystem, params);
     this.cxxPlatform = cxxPlatform;
     this.frameworks = frameworks;
     this.swiftBuckConfig = swiftBuckConfig;
     this.swiftCompiler = swiftCompiler;
     this.outputPath = outputPath;
+    this.moduleOnly = moduleOnly;
     this.headerPath = outputPath.resolve(SwiftDescriptions.toSwiftHeaderName(moduleName) + ".h");
 
     String escapedModuleName = CxxDescriptionEnhancer.normalizeModuleName(moduleName);
@@ -170,18 +173,16 @@ public class SwiftCompile extends AbstractBuildRuleWithDeclaredAndExtraDeps {
             .anyMatch(SwiftDescriptions.SWIFT_MAIN_FILENAME::equalsIgnoreCase);
 
     compilerCommand.add(
-        "-c",
         enableObjcInterop ? "-enable-objc-interop" : "",
         hasMainEntry ? "" : "-parse-as-library",
         "-module-name",
         moduleName,
         "-emit-module",
-        "-emit-module-path",
-        modulePath.toString(),
-        "-o",
-        objectPath.toString(),
+        "-emit-objc-header",
         "-emit-objc-header-path",
-        headerPath.toString());
+        headerPath.toString(),
+        "-o",
+        outputPath.toString());
 
     // Do not use swiftBuckConfig's version by definition
     version.ifPresent(
@@ -191,6 +192,12 @@ public class SwiftCompile extends AbstractBuildRuleWithDeclaredAndExtraDeps {
           compilerCommand.add("-swift-version", majorVersion);
         });
 
+    if (!moduleOnly) {
+      compilerCommand.add(
+          "-emit-object"
+      );
+    }
+    
     compilerCommand.addAll(Arg.stringify(compilerFlags, resolver));
     for (SourcePath sourcePath : srcs) {
       compilerCommand.add(resolver.getRelativePath(sourcePath).toString());

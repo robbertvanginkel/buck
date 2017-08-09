@@ -528,7 +528,16 @@ public class AppleLibraryDescription
                 HeaderMode.SYMLINK_TREE_WITH_MODULEMAP));
       }
       CxxPlatform cxxPlatform = platform.get();
-      final BuildTarget compileBuildTarget = untypedBuildTarget.withFlavors(SwiftLibraryDescription.SWIFT_COMPILE_FLAVOR, cxxPlatform.getFlavor());
+
+      ImmutableList.Builder<Flavor> swiftcFlavorsBuilder = ImmutableList.<Flavor>builder()
+          .add(cxxPlatform.getFlavor());
+      if (type.get().getValue() == Type.EXPORTED_HEADERS) {
+        swiftcFlavorsBuilder.add(SwiftLibraryDescription.SWIFT_MODULE_FLAVOR);
+      } else {
+        swiftcFlavorsBuilder.add(SwiftLibraryDescription.SWIFT_COMPILE_FLAVOR);
+      }
+      final BuildTarget compileBuildTarget = untypedBuildTarget.withFlavors(swiftcFlavorsBuilder.build());
+
       String moduleName = args.getHeaderPathPrefix().orElse(args.getName());
 
       BuildRule underlyingModuleRule = resolver.requireRule(
@@ -539,6 +548,7 @@ public class AppleLibraryDescription
 
       ImmutableList<Either<String, Macro>> importArg = ImmutableList.of(Either.ofLeft(
           "-import-underlying-module"));
+      boolean moduleOnly = type.get().getValue() == Type.EXPORTED_HEADERS;
       ImmutableList<StringWithMacros> compilerFlags =
           RichStream
               .of(StringWithMacros.of(importArg))
@@ -562,7 +572,8 @@ public class AppleLibraryDescription
           Optional.of(true),
           Optional.empty(),
           compilerFlags,
-          Optional.of(underlyingModule));
+          Optional.of(underlyingModule),
+          moduleOnly);
 
       switch (type.get().getValue()) {
         case HEADERS:

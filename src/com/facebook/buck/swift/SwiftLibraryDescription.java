@@ -81,6 +81,7 @@ import java.util.regex.Pattern;
 public class SwiftLibraryDescription implements Description<SwiftLibraryDescriptionArg>, Flavored, MetadataProvidingDescription<SwiftLibraryDescriptionArg> {
 
   public static final Flavor SWIFT_COMPILE_FLAVOR = InternalFlavor.of("swift-compile");
+  public static final Flavor SWIFT_MODULE_FLAVOR = InternalFlavor.of("swift-module");
 
   public enum Type implements FlavorConvertible {
     EXPORTED_HEADERS(CxxDescriptionEnhancer.EXPORTED_HEADER_SYMLINK_TREE_FLAVOR),
@@ -183,7 +184,8 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
           args.getEnableObjcInterop(),
           args.getBridgingHeader(),
           args.getCompilerFlags(),
-          Optional.empty());
+          Optional.empty(),
+          false);
       SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
       switch (type.get().getValue()) {
         case EXPORTED_HEADERS:
@@ -285,7 +287,8 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
       Optional<Boolean> enableObjcInterop,
       Optional<SourcePath> bridgingHeader,
       ImmutableList<StringWithMacros> compilerFlags,
-      Optional<CxxPreprocessorInput> underlyingModule) {
+      Optional<CxxPreprocessorInput> underlyingModule,
+      boolean moduleOnly) {
     return (SwiftCompile) resolver.computeIfAbsent(compileBuildTarget,
         (BuildTarget buildTarget) -> {
           ImmutableSet<CxxPreprocessorInput> inputs1 = RichStream.from(
@@ -331,8 +334,8 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
               enableObjcInterop,
               bridgingHeader,
               cxxPlatform.getCpp().resolve(resolver),
-              cxxDeps
-          );
+              cxxDeps,
+              moduleOnly);
           return swiftc;
         });
   }
