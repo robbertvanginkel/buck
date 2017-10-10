@@ -29,11 +29,15 @@ import java.util.stream.Collectors;
 public class AppleLibrarySwiftMetadata {
   private ImmutableSet<SourceWithFlags> swiftSources;
   private ImmutableSet<SourceWithFlags> nonSwiftSources;
+  private final boolean modular;
 
   public AppleLibrarySwiftMetadata(
-      ImmutableSet<SourceWithFlags> swiftSources, ImmutableSet<SourceWithFlags> nonSwiftSources) {
+      ImmutableSet<SourceWithFlags> swiftSources,
+      ImmutableSet<SourceWithFlags> nonSwiftSources,
+      boolean modular) {
     this.swiftSources = swiftSources;
     this.nonSwiftSources = nonSwiftSources;
+    this.modular = modular;
   }
 
   public ImmutableSet<SourceWithFlags> getSwiftSources() {
@@ -44,8 +48,14 @@ public class AppleLibrarySwiftMetadata {
     return nonSwiftSources;
   }
 
+  public boolean isModular() {
+    return modular;
+  }
+
   public static AppleLibrarySwiftMetadata from(
-      final ImmutableSortedSet<SourceWithFlags> allSources, final SourcePathResolver pathResolver) {
+      final ImmutableSortedSet<SourceWithFlags> allSources,
+      boolean modular,
+      final SourcePathResolver pathResolver) {
     Map<Boolean, List<SourceWithFlags>> swiftAndNonSwiftSources =
         allSources
             .stream()
@@ -65,6 +75,6 @@ public class AppleLibrarySwiftMetadata {
             .stream()
             .collect(ImmutableSet.toImmutableSet());
 
-    return new AppleLibrarySwiftMetadata(swiftSources, nonSwiftSources);
+    return new AppleLibrarySwiftMetadata(swiftSources, nonSwiftSources, modular);
   }
 }
