@@ -628,7 +628,7 @@ public class AppleLibraryDescription
         && headerMode.isPresent()
         && headerMode.get().equals(HeaderMode.SYMLINK_TREE_WITH_MODULEMAP)) {
       return createExportedModuleSymlinkTreeBuildRule(
-          buildTarget, projectFilesystem, resolver, args);
+          buildTarget, projectFilesystem, resolver, platform.get(), args);
     }
 
     return resolver.computeIfAbsent(
@@ -669,23 +669,32 @@ public class AppleLibraryDescription
       BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
       BuildRuleResolver resolver,
+      CxxPlatform cxxPlatform,
       AppleNativeTargetDescriptionArg args) {
     SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
     SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
 
     Path headerPathPrefix = AppleDescriptions.getHeaderPathPrefix(args, buildTarget);
-    ImmutableSortedMap<String, SourcePath> headers =
-        AppleDescriptions.parseAppleHeadersForUseFromOtherTargets(
-            buildTarget,
-            pathResolver::getRelativePath,
-            headerPathPrefix,
-            args.getExportedHeaders());
+    ImmutableSortedMap.Builder<Path, SourcePath> headers = ImmutableSortedMap.naturalOrder();
+    headers.putAll(
+        CxxPreprocessables.resolveHeaderMap(
+            Paths.get(""),
+            AppleDescriptions.parseAppleHeadersForUseFromOtherTargets(
+                buildTarget,
+                pathResolver::getRelativePath,
+                headerPathPrefix,
+                args.getExportedHeaders())));
+    if (targetContainsSwift(buildTarget, resolver)) {
+      headers.putAll(
+          AppleLibraryDescriptionSwiftEnhancer.getObjCGeneratedHeader(
+              buildTarget, resolver, cxxPlatform, HeaderVisibility.PUBLIC));
+    }
 
     return CxxDescriptionEnhancer.createHeaderSymlinkTree(
         buildTarget,
         projectFilesystem,
         HeaderMode.SYMLINK_TREE_WITH_MODULEMAP,
-        CxxPreprocessables.resolveHeaderMap(Paths.get(""), headers),
+        headers.build(),
         HeaderVisibility.PUBLIC);
   }
 
