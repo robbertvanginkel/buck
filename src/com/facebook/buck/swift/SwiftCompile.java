@@ -75,6 +75,8 @@ public class SwiftCompile extends AbstractBuildRuleWithDeclaredAndExtraDeps {
   @AddToRuleKey(stringify = true)
   private final Path outputPath;
 
+  @AddToRuleKey private final boolean importUnderlyingModule;
+
   private final Path modulePath;
   private final ImmutableList<Path> objectPaths;
   private final Optional<Path> swiftFileListPath;
@@ -112,13 +114,15 @@ public class SwiftCompile extends AbstractBuildRuleWithDeclaredAndExtraDeps {
       Optional<Boolean> enableObjcInterop,
       Optional<SourcePath> bridgingHeader,
       Preprocessor preprocessor,
-      PreprocessorFlags cxxDeps) {
+      PreprocessorFlags cxxDeps,
+      boolean importUnderlyingModule) {
     super(buildTarget, projectFilesystem, params);
     this.cxxPlatform = cxxPlatform;
     this.frameworks = frameworks;
     this.swiftBuckConfig = swiftBuckConfig;
     this.swiftCompiler = swiftCompiler;
     this.outputPath = outputPath;
+    this.importUnderlyingModule = importUnderlyingModule;
     this.headerPath = outputPath.resolve(SwiftDescriptions.toSwiftHeaderName(moduleName) + ".h");
 
     String escapedModuleName = CxxDescriptionEnhancer.normalizeModuleName(moduleName);
@@ -166,6 +170,9 @@ public class SwiftCompile extends AbstractBuildRuleWithDeclaredAndExtraDeps {
     if (bridgingHeader.isPresent()) {
       compilerCommand.add(
           "-import-objc-header", resolver.getRelativePath(bridgingHeader.get()).toString());
+    }
+    if (importUnderlyingModule) {
+      compilerCommand.add("-import-underlying-module");
     }
 
     final Function<FrameworkPath, Path> frameworkPathToSearchPath =
