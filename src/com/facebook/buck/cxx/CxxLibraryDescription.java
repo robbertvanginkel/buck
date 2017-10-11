@@ -499,6 +499,11 @@ public class CxxLibraryDescription
     default CxxDeps getCxxDeps() {
       return CxxDeps.concat(getPrivateCxxDeps(), getExportedCxxDeps());
     }
+
+    @Value.Default
+    default boolean isModular() {
+      return false;
+    }
   }
 
   @BuckStyleImmutable

@@ -45,6 +45,7 @@ import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.facebook.buck.rules.SymlinkTree;
 import com.facebook.buck.rules.args.Arg;
 import com.facebook.buck.rules.args.SourcePathArg;
+import com.facebook.buck.rules.args.StringArg;
 import com.facebook.buck.rules.coercer.FrameworkPath;
 import com.facebook.buck.rules.macros.StringWithMacros;
 import com.facebook.buck.toolchain.ToolchainProvider;
@@ -53,7 +54,6 @@ import com.facebook.buck.util.RichStream;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Multimaps;
@@ -413,40 +413,46 @@ public class CxxLibraryFactory {
     }
 
     // Create rule to build the object files.
-    ImmutableMultimap<CxxSource.Type, Arg> compilerFlags =
-        ImmutableListMultimap.copyOf(
-            Multimaps.transformValues(
-                CxxFlags.getLanguageFlagsWithMacros(
-                    args.getCompilerFlags(),
-                    args.getPlatformCompilerFlags(),
-                    args.getLangCompilerFlags(),
-                    cxxPlatform),
-                f ->
-                    CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                        buildTarget, cellRoots, ruleResolver, cxxPlatform, f)));
+    ImmutableListMultimap.Builder<CxxSource.Type, Arg> allCompilerFlagsBuilder =
+        ImmutableListMultimap.builder();
+    allCompilerFlagsBuilder.putAll(
+        Multimaps.transformValues(
+            CxxFlags.getLanguageFlagsWithMacros(
+                args.getCompilerFlags(),
+                args.getPlatformCompilerFlags(),
+                args.getLangCompilerFlags(),
+                cxxPlatform),
+            f ->
+                CxxDescriptionEnhancer.toStringWithMacrosArgs(
+                    buildTarget, cellRoots, ruleResolver, cxxPlatform, f)));
+    if (args.isModular()) {
+      allCompilerFlagsBuilder.putAll(
+          CxxFlags.toLanguageFlags(StringArg.from("-fmodule-name=" + args.getModuleName().get())));
+    }
+
     return CxxSourceRuleFactory.of(
-            projectFilesystem,
-            buildTarget,
+        projectFilesystem,
+        buildTarget,
+        ruleResolver,
+        sourcePathResolver,
+        ruleFinder,
+        cxxBuckConfig,
+        cxxPlatform,
+        CxxLibraryDescription.getPreprocessorInputsForBuildingLibrarySources(
             ruleResolver,
-            sourcePathResolver,
-            ruleFinder,
-            cxxBuckConfig,
+            cellRoots,
+            buildTarget,
+            args,
             cxxPlatform,
-            CxxLibraryDescription.getPreprocessorInputsForBuildingLibrarySources(
-                ruleResolver,
-                cellRoots,
-                buildTarget,
-                args,
-                cxxPlatform,
-                deps,
-                transitivePreprocessorInputs,
-                privateHeaderSymlinkTrees.build(),
-                sandboxTree),
-            compilerFlags,
-            args.getPrefixHeader(),
-            args.getPrecompiledHeader(),
-            pic,
-            sandboxTree)
+            deps,
+            transitivePreprocessorInputs,
+            privateHeaderSymlinkTrees.build(),
+            sandboxTree),
+        allCompilerFlagsBuilder.build(),
+        args.getPrefixHeader(),
+        args.getPrecompiledHeader(),
+        pic,
+        sandboxTree)
         .requirePreprocessAndCompileRules(
             CxxDescriptionEnhancer.parseCxxSources(
                 buildTarget, ruleResolver, ruleFinder, sourcePathResolver, cxxPlatform, args));

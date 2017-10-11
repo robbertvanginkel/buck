@@ -311,6 +311,8 @@ public class AppleDescriptions {
         SourceList.ofNamedSources(
             convertAppleHeadersToPublicCxxHeaders(
                 buildTarget, resolver::getRelativePath, headerPathPrefix, arg)));
+    output.setModuleName(
+        arg.getModuleName().map(Optional::of).orElse(Optional.of(buildTarget.getShortName())));
   }
 
   public static Optional<AppleAssetCatalog> createBuildRuleForTransitiveAssetCatalogDependencies(
