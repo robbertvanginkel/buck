@@ -17,6 +17,7 @@
 package com.facebook.buck.cxx.toolchain;
 
 import com.facebook.buck.apple.clang.ModuleMap;
+import com.facebook.buck.apple.clang.UmbrellaHeader;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.log.Logger;
 import com.facebook.buck.model.BuildTarget;
@@ -89,6 +90,27 @@ public final class HeaderSymlinkTreeWithModuleMap extends HeaderSymlinkTree {
                   .render(),
               moduleMapPath,
               false));
+
+      Path umbrellaHeaderPath = Paths.get(moduleName.get(), moduleName.get() + ".h");
+      boolean containsUmbrellaHeader = paths.contains(umbrellaHeaderPath);
+      if (!containsUmbrellaHeader) {
+        builder.add(
+            new WriteFileStep(
+                getProjectFilesystem(),
+                new UmbrellaHeader(
+                        moduleName.get(),
+                        getLinks()
+                            .keySet()
+                            .stream()
+                            .map(x -> x.getFileName().toString())
+                            .collect(ImmutableList.toImmutableList()))
+                    .render(),
+                BuildTargets.getGenPath(
+                    getProjectFilesystem(),
+                    getBuildTarget(),
+                    "%s/" + umbrellaHeaderPath.toString()),
+                false));
+      }
     }
     return builder.build();
   }

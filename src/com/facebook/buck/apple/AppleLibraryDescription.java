@@ -25,6 +25,7 @@ import com.facebook.buck.apple.toolchain.CodeSignIdentityStore;
 import com.facebook.buck.apple.toolchain.ProvisioningProfileStore;
 import com.facebook.buck.cxx.CxxCompilationDatabase;
 import com.facebook.buck.cxx.CxxDescriptionEnhancer;
+import com.facebook.buck.cxx.CxxFlags;
 import com.facebook.buck.cxx.CxxHeaders;
 import com.facebook.buck.cxx.CxxHeadersDir;
 import com.facebook.buck.cxx.CxxLibraryDescription;
@@ -96,6 +97,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Iterables;
+import com.google.common.collect.Multimaps;
 import com.google.common.collect.Sets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -761,6 +763,18 @@ public class AppleLibraryDescription
           baseTarget = baseTarget.withoutFlavors(platform.getKey(), visibility.getKey());
 
           CxxPreprocessorInput.Builder cxxPreprocessorInputBuilder = CxxPreprocessorInput.builder();
+          cxxPreprocessorInputBuilder.putAllPreprocessorFlags(
+              Multimaps.transformValues(
+                  CxxFlags.getLanguageFlagsWithMacros(
+                      args.getExportedPreprocessorFlags(),
+                      args.getExportedPlatformPreprocessorFlags(),
+                      args.getExportedLangPreprocessorFlags(),
+                      platform.getValue()),
+                  f ->
+                      CxxDescriptionEnhancer.toStringWithMacrosArgs(
+                          buildTarget, cellRoots, resolver, platform.getValue(), f)));
+          cxxPreprocessorInputBuilder.addAllFrameworks(args.getFrameworks());
+
           HeaderSymlinkTree symlinkTree =
               (HeaderSymlinkTree)
                   resolver.requireRule(
