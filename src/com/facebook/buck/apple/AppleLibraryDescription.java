@@ -258,13 +258,17 @@ public class AppleLibraryDescription
       BuildRuleParams params,
       BuildRuleResolver resolver,
       CellPathResolver cellRoots,
-      CxxLibraryDescription.CommonArg args,
+      AppleNativeTargetDescriptionArg args,
       Optional<AppleLibrarySwiftDelegate> swiftDelegate) {
     Optional<Map.Entry<Flavor, Type>> maybeType = LIBRARY_TYPE.getFlavorAndValue(buildTarget);
     return maybeType.flatMap(
         type -> {
           FlavorDomain<CxxPlatform> cxxPlatforms = getCxxPlatformsProvider().getCxxPlatforms();
-          if (type.getValue().equals(Type.SWIFT_EXPORTED_OBJC_GENERATED_HEADER)) {
+          if (type.getValue().equals(Type.SWIFT_UNDERLYING_MODULE)) {
+            return Optional.of(
+                createUnderlyingModuleSymlinkTreeBuildRule(
+                    buildTarget, projectFilesystem, resolver, args));
+          } else if (type.getValue().equals(Type.SWIFT_EXPORTED_OBJC_GENERATED_HEADER)) {
             CxxPlatform cxxPlatform =
                 cxxPlatforms.getValue(buildTarget).orElseThrow(IllegalArgumentException::new);
 
@@ -633,11 +637,6 @@ public class AppleLibraryDescription
         && headerMode.get().equals(HeaderMode.SYMLINK_TREE_WITH_MODULEMAP)) {
       return createExportedModuleSymlinkTreeBuildRule(
           buildTarget, projectFilesystem, resolver, platform.get(), args);
-    } else if (platform.isPresent()
-        && libType.isPresent()
-        && libType.get().equals(Type.SWIFT_UNDERLYING_MODULE)) {
-      return createUnderlyingModuleSymlinkTreeBuildRule(
-          buildTarget, projectFilesystem, resolver, args);
     }
 
     return resolver.computeIfAbsent(
@@ -900,11 +899,13 @@ public class AppleLibraryDescription
                 baseTarget.withAppendedFlavors(Type.SWIFT_UNDERLYING_MODULE.getFlavor());
             HeaderSymlinkTreeWithModuleMap modulemap =
                 (HeaderSymlinkTreeWithModuleMap) resolver.requireRule(swiftCompileTarget);
-
-            CxxPreprocessorInput.Builder builder = CxxPreprocessorInput.builder();
-            builder.addIncludes(
-                CxxSymlinkTreeHeaders.from(modulemap, CxxPreprocessables.IncludeType.LOCAL));
-            return Optional.of(builder.build()).map(metadataClass::cast);
+            if (modulemap.getLinks().size() > 0) {
+              CxxPreprocessorInput.Builder builder = CxxPreprocessorInput.builder();
+              builder.addIncludes(
+                  CxxSymlinkTreeHeaders.from(modulemap, CxxPreprocessables.IncludeType.LOCAL));
+              return Optional.of(builder.build()).map(metadataClass::cast);
+            }
+            return Optional.empty();
           }
       }
     }

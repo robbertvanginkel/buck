@@ -43,17 +43,17 @@ public final class HeaderSymlinkTreeWithModuleMap extends HeaderSymlinkTree {
   @AddToRuleKey(stringify = true)
   private final Path moduleMapPath;
 
-  @AddToRuleKey private final String moduleName;
+  @AddToRuleKey private final Optional<String> moduleName;
 
   private HeaderSymlinkTreeWithModuleMap(
       BuildTarget target,
       ProjectFilesystem filesystem,
       Path root,
       ImmutableMap<Path, SourcePath> links,
-      String moduleName) {
+      Optional<String> moduleName) {
     super(target, filesystem, root, links);
     this.moduleName = moduleName;
-    this.moduleMapPath = getPath(filesystem, target, moduleName);
+    this.moduleMapPath = getPath(filesystem, target, moduleName.orElse(""));
   }
 
   public static HeaderSymlinkTreeWithModuleMap create(
@@ -61,7 +61,7 @@ public final class HeaderSymlinkTreeWithModuleMap extends HeaderSymlinkTree {
       ProjectFilesystem filesystem,
       Path root,
       ImmutableMap<Path, SourcePath> links) {
-    String moduleName = getModuleName(links);
+    Optional<String> moduleName = getModuleName(links);
     return new HeaderSymlinkTreeWithModuleMap(target, filesystem, root, links, moduleName);
   }
 
@@ -76,20 +76,20 @@ public final class HeaderSymlinkTreeWithModuleMap extends HeaderSymlinkTree {
     LOG.debug("Generating post-build steps to write modulemap to %s", moduleMapPath);
     ImmutableSortedSet<Path> paths = getLinks().keySet();
     ImmutableList.Builder<Step> builder =
-        ImmutableList.<Step>builder()
-            .addAll(super.getBuildSteps(context, buildableContext))
-            .add(
-                new WriteFileStep(
-                    getProjectFilesystem(),
-                    new ModuleMap(
-                            moduleName,
-                            paths.contains(Paths.get(moduleName, moduleName + "-Swift.h"))
-                                ? ModuleMap.SwiftMode.INCLUDE_SWIFT_HEADER
-                                : ModuleMap.SwiftMode.NO_SWIFT)
-                        .render(),
-                    moduleMapPath,
-                    false));
-
+        ImmutableList.<Step>builder().addAll(super.getBuildSteps(context, buildableContext));
+    if (moduleName.isPresent()) {
+      builder.add(
+          new WriteFileStep(
+              getProjectFilesystem(),
+              new ModuleMap(
+                      moduleName.get(),
+                      paths.contains(Paths.get(moduleName.get(), moduleName.get() + "-Swift.h"))
+                          ? ModuleMap.SwiftMode.INCLUDE_SWIFT_HEADER
+                          : ModuleMap.SwiftMode.NO_SWIFT)
+                  .render(),
+              moduleMapPath,
+              false));
+    }
     return builder.build();
   }
 
@@ -103,8 +103,12 @@ public final class HeaderSymlinkTreeWithModuleMap extends HeaderSymlinkTree {
     return Optional.of(getProjectFilesystem().resolve(moduleMapPath));
   }
 
-  static String getModuleName(ImmutableMap<Path, SourcePath> links) {
-    return links.keySet().iterator().next().getName(0).toString();
+  static Optional<String> getModuleName(ImmutableMap<Path, SourcePath> links) {
+    if (links.size() > 0) {
+      return Optional.of(links.keySet().iterator().next().getName(0).toString());
+    } else {
+      return Optional.empty();
+    }
   }
 
   @VisibleForTesting
