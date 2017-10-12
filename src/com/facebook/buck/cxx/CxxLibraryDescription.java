@@ -24,6 +24,7 @@ import com.facebook.buck.cxx.toolchain.HeaderSymlinkTree;
 import com.facebook.buck.cxx.toolchain.HeaderVisibility;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
+import com.facebook.buck.log.Logger;
 import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.model.Flavor;
 import com.facebook.buck.model.FlavorConvertible;
@@ -73,6 +74,8 @@ public class CxxLibraryDescription
         Flavored,
         MetadataProvidingDescription<CxxLibraryDescriptionArg>,
         VersionPropagator<CxxLibraryDescriptionArg> {
+
+  private static final Logger LOG = Logger.get(CxxLibraryDescription.class);
 
   public enum Type implements FlavorConvertible {
     HEADERS(CxxDescriptionEnhancer.HEADER_SYMLINK_TREE_FLAVOR),
@@ -361,17 +364,46 @@ public class CxxLibraryDescription
     static TransitiveCxxPreprocessorInputFunction fromDeps() {
       return (target, ruleResolver, cxxPlatform, deps, privateDeps) -> {
         Map<BuildTarget, CxxPreprocessorInput> input = new LinkedHashMap<>();
+        Map<BuildTarget, CxxPreprocessorInput> privates = new LinkedHashMap<>();
         input.put(
             target,
             queryMetadataCxxPreprocessorInput(
                     ruleResolver, target, cxxPlatform, HeaderVisibility.PUBLIC)
                 .orElseThrow(IllegalStateException::new));
         for (BuildRule rule : deps) {
+          if (rule instanceof NativeTestable) {
+            NativeTestable testable = (NativeTestable) rule;
+            BuildTarget targetWithoutFlavor = BuildTarget.of(target.getUnflavoredBuildTarget());
+            if (testable.isTestedBy(targetWithoutFlavor)) {
+              LOG.debug(
+                  "Adding private includes of tested rule %s to testing rule %s",
+                  rule.getBuildTarget(), target);
+              // Add any dependent headers
+              if (rule instanceof CxxPreprocessorDep) {
+                input.putAll(
+                    ((CxxPreprocessorDep) rule).getTransitiveCxxPreprocessorInput(cxxPlatform));
+              } else {
+                input.putAll(
+                    CxxPreprocessables.getTransitiveCxxPreprocessorInputMap(
+                        cxxPlatform, ImmutableList.of(rule)));
+              }
+
+              privates.put(
+                  rule.getBuildTarget(), testable.getPrivateCxxPreprocessorInput(cxxPlatform));
+
+            } else {
+              if (rule instanceof CxxPreprocessorDep) {
+                input.putAll(
+                    ((CxxPreprocessorDep) rule).getTransitiveCxxPreprocessorInput(cxxPlatform));
+              }
+            }
+          }
           if (rule instanceof CxxPreprocessorDep) {
             input.putAll(
                 ((CxxPreprocessorDep) rule).getTransitiveCxxPreprocessorInput(cxxPlatform));
           }
         }
+        input.putAll(privates);
         return input.values().stream();
       };
     }

@@ -529,11 +529,11 @@ public class CxxDescriptionEnhancer {
       }
     }
 
-    ImmutableList<CxxPreprocessorInput> cxxPreprocessorInputFromTestedRules =
-        cxxPreprocessorInputFromTestedRulesBuilder.build();
-    LOG.verbose(
-        "Rules tested by target %s added private includes %s",
-        target, cxxPreprocessorInputFromTestedRules);
+    //    ImmutableList<CxxPreprocessorInput> cxxPreprocessorInputFromTestedRules =
+    //        cxxPreprocessorInputFromTestedRulesBuilder.build();
+    //    LOG.verbose(
+    //        "Rules tested by target %s added private includes %s",
+    //        target, cxxPreprocessorInputFromTestedRules);
 
     ImmutableList.Builder<CxxHeaders> allIncludes = ImmutableList.builder();
     for (HeaderSymlinkTree headerSymlinkTree : headerSymlinkTrees) {
@@ -565,7 +565,7 @@ public class CxxDescriptionEnhancer {
     return ImmutableList.<CxxPreprocessorInput>builder()
         .add(localPreprocessorInput)
         .addAll(cxxPreprocessorInputFromDeps)
-        .addAll(cxxPreprocessorInputFromTestedRules)
+        //        .addAll(cxxPreprocessorInputFromTestedRules)
         .build();
   }
 

@@ -140,6 +140,31 @@ public class CxxPreprocessables {
     return deps.values();
   }
 
+  public static Map<BuildTarget, CxxPreprocessorInput> getTransitiveCxxPreprocessorInputMap(
+      final CxxPlatform cxxPlatform, Iterable<? extends BuildRule> inputs) {
+
+    // We don't really care about the order we get back here, since headers shouldn't
+    // conflict.  However, we want something that's deterministic, so sort by build
+    // target.
+    final Map<BuildTarget, CxxPreprocessorInput> deps = new LinkedHashMap<>();
+
+    // Build up the map of all C/C++ preprocessable dependencies.
+    new AbstractBreadthFirstTraversal<BuildRule>(inputs) {
+      @Override
+      public Iterable<BuildRule> visit(BuildRule rule) {
+        if (rule instanceof CxxPreprocessorDep) {
+          CxxPreprocessorDep dep = (CxxPreprocessorDep) rule;
+          deps.putAll(dep.getTransitiveCxxPreprocessorInput(cxxPlatform));
+          return ImmutableSet.of();
+        }
+        return rule.getBuildDeps();
+      }
+    }.start();
+
+    // Grab the cxx preprocessor inputs and return them.
+    return deps;
+  }
+
   public static Collection<CxxPreprocessorInput> getTransitiveCxxPreprocessorInput(
       final CxxPlatform cxxPlatform, Iterable<? extends BuildRule> inputs) {
     return getTransitiveCxxPreprocessorInput(cxxPlatform, inputs, x -> true);

@@ -745,7 +745,10 @@ public class AppleLibraryDescription
     if (CxxLibraryDescription.METADATA_TYPE.containsAnyOf(buildTarget.getFlavors())) {
       Optional<Map.Entry<Flavor, CxxLibraryDescription.MetadataType>> cxxMetaDataType =
           CxxLibraryDescription.METADATA_TYPE.getFlavorAndValue(buildTarget);
-      if (args.isModular()) {
+      Optional<Map.Entry<Flavor, HeaderVisibility>> visibility =
+          CxxLibraryDescription.HEADER_VISIBILITY.getFlavorAndValue(buildTarget);
+
+      if (args.isModular() && visibility.isPresent()) {
         BuildTarget baseTarget = buildTarget.withoutFlavors(cxxMetaDataType.get().getKey());
         if (cxxMetaDataType
             .get()
@@ -756,38 +759,65 @@ public class AppleLibraryDescription
                   .getCxxPlatforms()
                   .getFlavorAndValue(buildTarget)
                   .orElseThrow(IllegalArgumentException::new);
-          Map.Entry<Flavor, HeaderVisibility> visibility =
-              CxxLibraryDescription.HEADER_VISIBILITY
-                  .getFlavorAndValue(buildTarget)
-                  .orElseThrow(IllegalArgumentException::new);
-          baseTarget = baseTarget.withoutFlavors(platform.getKey(), visibility.getKey());
+          baseTarget = baseTarget.withoutFlavors(platform.getKey(), visibility.get().getKey());
 
-          CxxPreprocessorInput.Builder cxxPreprocessorInputBuilder = CxxPreprocessorInput.builder();
-          cxxPreprocessorInputBuilder.putAllPreprocessorFlags(
-              Multimaps.transformValues(
-                  CxxFlags.getLanguageFlagsWithMacros(
-                      args.getExportedPreprocessorFlags(),
-                      args.getExportedPlatformPreprocessorFlags(),
-                      args.getExportedLangPreprocessorFlags(),
-                      platform.getValue()),
-                  f ->
-                      CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                          buildTarget, cellRoots, resolver, platform.getValue(), f)));
-          cxxPreprocessorInputBuilder.addAllFrameworks(args.getFrameworks());
+          if (visibility.get().getValue().equals(HeaderVisibility.PUBLIC)) {
+            CxxPreprocessorInput.Builder cxxPreprocessorInputBuilder =
+                CxxPreprocessorInput.builder();
+            cxxPreprocessorInputBuilder.putAllPreprocessorFlags(
+                Multimaps.transformValues(
+                    CxxFlags.getLanguageFlagsWithMacros(
+                        args.getExportedPreprocessorFlags(),
+                        args.getExportedPlatformPreprocessorFlags(),
+                        args.getExportedLangPreprocessorFlags(),
+                        platform.getValue()),
+                    f ->
+                        CxxDescriptionEnhancer.toStringWithMacrosArgs(
+                            buildTarget, cellRoots, resolver, platform.getValue(), f)));
+            cxxPreprocessorInputBuilder.addAllFrameworks(args.getFrameworks());
 
-          HeaderSymlinkTree symlinkTree =
-              (HeaderSymlinkTree)
-                  resolver.requireRule(
-                      baseTarget
-                          .withoutFlavors(LIBRARY_TYPE.getFlavors())
-                          .withAppendedFlavors(
-                              CxxLibraryDescription.Type.EXPORTED_HEADERS.getFlavor(),
-                              platform.getKey(),
-                              HeaderMode.SYMLINK_TREE_WITH_MODULEMAP.getFlavor()));
-          cxxPreprocessorInputBuilder.addIncludes(
-              CxxSymlinkTreeHeaders.from(symlinkTree, CxxPreprocessables.IncludeType.LOCAL));
-          CxxPreprocessorInput cxxPreprocessorInput = cxxPreprocessorInputBuilder.build();
-          return Optional.of(cxxPreprocessorInput).map(metadataClass::cast);
+            HeaderSymlinkTree symlinkTree =
+                (HeaderSymlinkTree)
+                    resolver.requireRule(
+                        baseTarget
+                            .withoutFlavors(LIBRARY_TYPE.getFlavors())
+                            .withAppendedFlavors(
+                                CxxLibraryDescription.Type.EXPORTED_HEADERS.getFlavor(),
+                                platform.getKey(),
+                                HeaderMode.SYMLINK_TREE_WITH_MODULEMAP.getFlavor()));
+            cxxPreprocessorInputBuilder.addIncludes(
+                CxxSymlinkTreeHeaders.from(symlinkTree, CxxPreprocessables.IncludeType.LOCAL));
+            CxxPreprocessorInput cxxPreprocessorInput = cxxPreprocessorInputBuilder.build();
+            return Optional.of(cxxPreprocessorInput).map(metadataClass::cast);
+          } else {
+
+            @SuppressWarnings("unchecked")
+            Optional<CxxPreprocessorInput> privateInput =
+                ((Optional<CxxPreprocessorInput>)
+                    forwardMetadataToCxxLibraryDescription(
+                        buildTarget,
+                        resolver,
+                        cellRoots,
+                        args,
+                        metadataClass,
+                        pathResolver));
+            @SuppressWarnings("unchecked")
+            Optional<CxxPreprocessorInput> publicInput =
+                ((Optional<CxxPreprocessorInput>)
+                    forwardMetadataToCxxLibraryDescription(
+                        buildTarget
+                            .withoutFlavors(visibility.get().getKey())
+                            .withAppendedFlavors(HeaderVisibility.PUBLIC.getFlavor()),
+                        resolver,
+                        cellRoots,
+                        args,
+                        metadataClass,
+                        pathResolver));
+            return Optional.of(
+                    CxxPreprocessorInput.concat(
+                        ImmutableList.of(privateInput.get(), publicInput.get())))
+                .map(metadataClass::cast);
+          }
         }
       } else {
         return forwardMetadataToCxxLibraryDescription(
@@ -1057,7 +1087,7 @@ public class AppleLibraryDescription
   @Override
   public Optional<CxxPreprocessorInput> getPrivatePreprocessorInput(
       BuildTarget target, BuildRuleResolver resolver, CxxPlatform platform) {
-    if (!targetContainsSwift(target, resolver) || targetIsModular(target, resolver)) {
+    if (!targetContainsSwift(target, resolver)) {
       return Optional.empty();
     }
 
