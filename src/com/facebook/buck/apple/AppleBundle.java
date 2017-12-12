@@ -96,6 +96,7 @@ public class AppleBundle extends AbstractBuildRuleWithDeclaredAndExtraDeps
     implements NativeTestable, BuildRuleWithBinary, HasRuntimeDeps, BinaryBuildRule {
 
   private static final Logger LOG = Logger.get(AppleBundle.class);
+  private static final String CODE_SIGNING_REQUIRED = "CODE_SIGNING_REQUIRED";
   public static final String CODE_SIGN_ENTITLEMENTS = "CODE_SIGN_ENTITLEMENTS";
   private static final String FRAMEWORK_EXTENSION =
       AppleBundleExtension.FRAMEWORK.toFileExtension();
@@ -1107,6 +1108,14 @@ public class AppleBundle extends AbstractBuildRuleWithDeclaredAndExtraDeps
 
   // .framework bundles will be code-signed when they're copied into the containing bundle.
   private boolean needCodeSign() {
+    Optional<String> signingRequired =
+        InfoPlistSubstitution.getVariableExpansionForPlatform(
+            CODE_SIGNING_REQUIRED,
+            platform.getPlatformName(),
+            withDefaults(infoPlistSubstitutions, ImmutableMap.<String, String>of()));
+    if (signingRequired.isPresent() && signingRequired.get().equals("NO")) {
+      return false;
+    }
     return binary.isPresent()
         && ApplePlatform.needsCodeSign(platform.getName())
         && !extension.equals(FRAMEWORK_EXTENSION);
