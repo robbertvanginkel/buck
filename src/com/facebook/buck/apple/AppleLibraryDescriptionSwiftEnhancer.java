@@ -63,7 +63,8 @@ public class AppleLibraryDescriptionSwiftEnhancer {
       CxxPlatform platform,
       AppleCxxPlatform applePlatform,
       SwiftBuckConfig swiftBuckConfig,
-      ImmutableSet<CxxPreprocessorInput> inputs) {
+      ImmutableSet<CxxPreprocessorInput> inputs,
+      boolean moduleOnly) {
 
     SourcePathRuleFinder rulePathFinder = new SourcePathRuleFinder(resolver);
     SwiftLibraryDescriptionArg.Builder delegateArgsBuilder = SwiftLibraryDescriptionArg.builder();
@@ -103,7 +104,8 @@ public class AppleLibraryDescriptionSwiftEnhancer {
         swiftArgs,
         preprocessor,
         preprocessorFlags,
-        underlyingModule.isPresent());
+        underlyingModule.isPresent(),
+        moduleOnly);
   }
 
   public static ImmutableSet<CxxPreprocessorInput> getPreprocessorInputsForAppleLibrary(
@@ -131,9 +133,11 @@ public class AppleLibraryDescriptionSwiftEnhancer {
       ProjectFilesystem projectFilesystem,
       BuildRuleResolver resolver,
       CxxPlatform cxxPlatform,
+      SwiftBuckConfig swiftBuckConfig,
       HeaderVisibility headerVisibility) {
     ImmutableMap<Path, SourcePath> headers =
-        getObjCGeneratedHeader(buildTarget, resolver, cxxPlatform, headerVisibility);
+        getObjCGeneratedHeader(
+            buildTarget, resolver, cxxPlatform, swiftBuckConfig, headerVisibility);
 
     Path outputPath = BuildTargets.getGenPath(projectFilesystem, buildTarget, "%s");
     HeaderSymlinkTreeWithHeaderMap headerMapRule =
@@ -146,9 +150,13 @@ public class AppleLibraryDescriptionSwiftEnhancer {
       BuildTarget buildTarget,
       BuildRuleResolver resolver,
       CxxPlatform cxxPlatform,
+      SwiftBuckConfig swiftBuckConfig,
       HeaderVisibility headerVisibility) {
-    BuildTarget swiftCompileTarget = createBuildTargetForSwiftCompile(buildTarget, cxxPlatform);
-    SwiftCompile compile = (SwiftCompile) resolver.requireRule(swiftCompileTarget);
+    BuildTarget swiftModuleTarget =
+        swiftBuckConfig.shouldSplitSwiftModuleGeneration()
+            ? createBuildTargetForSwiftModule(buildTarget, cxxPlatform)
+            : createBuildTargetForSwiftCompile(buildTarget, cxxPlatform);
+    SwiftCompile compile = (SwiftCompile) resolver.requireRule(swiftModuleTarget);
 
     Path objCImportPath = getObjCGeneratedHeaderSourceIncludePath(headerVisibility, compile);
     SourcePath objCGeneratedPath = compile.getObjCGeneratedHeaderPath();
@@ -186,6 +194,14 @@ public class AppleLibraryDescriptionSwiftEnhancer {
     Preconditions.checkNotNull(appleLibType);
 
     return buildTarget.withFlavors(appleLibType.getFlavor(), cxxPlatform.getFlavor());
+  }
+
+  public static BuildTarget createBuildTargetForSwiftModule(
+      BuildTarget target, CxxPlatform cxxPlatform) {
+    // `target` is not necessarily flavored with just `apple_library` flavors, that's because
+    // Swift compile rules can be required by other rules (e.g., `apple_test`, `apple_binary` etc).
+    return target.withFlavors(
+        AppleLibraryDescription.Type.SWIFT_MODULE.getFlavor(), cxxPlatform.getFlavor());
   }
 
   public static BuildTarget createBuildTargetForSwiftCompile(

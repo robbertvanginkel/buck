@@ -304,6 +304,7 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
           args.getBridgingHeader(),
           preprocessor,
           cxxDeps,
+          false,
           false);
     }
 
@@ -443,7 +444,8 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
       SwiftLibraryDescriptionArg args,
       Preprocessor preprocessor,
       PreprocessorFlags preprocessFlags,
-      boolean importUnderlyingModule) {
+      boolean importUnderlyingModule,
+      boolean moduleOnly) {
 
     DepsBuilder srcsDepsBuilder = new DepsBuilder(ruleFinder);
     args.getSrcs().forEach(src -> srcsDepsBuilder.add(src));
@@ -472,7 +474,8 @@ public class SwiftLibraryDescription implements Description<SwiftLibraryDescript
         args.getBridgingHeader(),
         preprocessor,
         preprocessFlags,
-        importUnderlyingModule);
+        importUnderlyingModule,
+        moduleOnly);
   }
 
   public static boolean isSwiftTarget(BuildTarget buildTarget) {
