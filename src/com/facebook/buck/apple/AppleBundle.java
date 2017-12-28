@@ -96,6 +96,7 @@ public class AppleBundle extends AbstractBuildRuleWithDeclaredAndExtraDeps
     implements NativeTestable, BuildRuleWithBinary, HasRuntimeDeps, BinaryBuildRule {
 
   private static final Logger LOG = Logger.get(AppleBundle.class);
+  private static final String CODE_SIGNING_REQUIRED = "CODE_SIGNING_REQUIRED";
   public static final String CODE_SIGN_ENTITLEMENTS = "CODE_SIGN_ENTITLEMENTS";
   private static final String FRAMEWORK_EXTENSION =
       AppleBundleExtension.FRAMEWORK.toFileExtension();
@@ -681,14 +682,13 @@ public class AppleBundle extends AbstractBuildRuleWithDeclaredAndExtraDeps
     return stepsBuilder.build();
   }
 
-  private void verifyResourceConflicts(AppleBundleResources resources,
-                                       SourcePathResolver resolver) {
+  private void verifyResourceConflicts(
+      AppleBundleResources resources, SourcePathResolver resolver) {
     // Ensure there are no resources that will overwrite each other
     // TODO: handle ResourceDirsContainingResourceDirs
     Set<Path> resourcePaths = new HashSet<>();
-    for (SourcePath path : Iterables.concat(
-        resources.getResourceDirs(),
-        resources.getResourceFiles())) {
+    for (SourcePath path :
+        Iterables.concat(resources.getResourceDirs(), resources.getResourceFiles())) {
       Path pathInBundle = resolver.getRelativePath(path).getFileName();
       if (resourcePaths.contains(pathInBundle)) {
         throw new HumanReadableException(
@@ -1107,6 +1107,14 @@ public class AppleBundle extends AbstractBuildRuleWithDeclaredAndExtraDeps
 
   // .framework bundles will be code-signed when they're copied into the containing bundle.
   private boolean needCodeSign() {
+    Optional<String> signingRequired =
+        InfoPlistSubstitution.getVariableExpansionForPlatform(
+            CODE_SIGNING_REQUIRED,
+            platform.getPlatformName(),
+            withDefaults(infoPlistSubstitutions, ImmutableMap.<String, String>of()));
+    if (signingRequired.isPresent() && signingRequired.get().equals("NO")) {
+      return false;
+    }
     return binary.isPresent()
         && ApplePlatform.needsCodeSign(platform.getName())
         && !extension.equals(FRAMEWORK_EXTENSION);

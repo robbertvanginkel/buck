@@ -625,7 +625,8 @@ public class AppleBundleIntegrationTest {
   @Test
   public void appBundleWithConflictingFileAndFolderResources() throws Exception {
     ProjectWorkspace workspace =
-        TestDataHelper.createProjectWorkspaceForScenario(this, "app_bundle_with_conflicting_resources", tmp);
+        TestDataHelper.createProjectWorkspaceForScenario(
+            this, "app_bundle_with_conflicting_resources", tmp);
     workspace.setUp();
 
     BuildTarget target = workspace.newBuildTarget("//:DemoApp#iphonesimulator-x86_64,no-debug");
@@ -635,7 +636,8 @@ public class AppleBundleIntegrationTest {
   @Test
   public void appBundleWithConflictingNestedFolderResources() throws Exception {
     ProjectWorkspace workspace =
-        TestDataHelper.createProjectWorkspaceForScenario(this, "app_bundle_with_conflicting_nested_resources", tmp);
+        TestDataHelper.createProjectWorkspaceForScenario(
+            this, "app_bundle_with_conflicting_nested_resources", tmp);
     workspace.setUp();
 
     BuildTarget target = workspace.newBuildTarget("//:DemoApp#iphonesimulator-x86_64,no-debug");
@@ -645,7 +647,8 @@ public class AppleBundleIntegrationTest {
   @Test
   public void appBundleWithConflictingFilenamesInNestedFolders() throws Exception {
     ProjectWorkspace workspace =
-        TestDataHelper.createProjectWorkspaceForScenario(this, "app_bundle_with_conflicting_filenames_in_nested_folders", tmp);
+        TestDataHelper.createProjectWorkspaceForScenario(
+            this, "app_bundle_with_conflicting_filenames_in_nested_folders", tmp);
     workspace.setUp();
 
     BuildTarget target = workspace.newBuildTarget("//:DemoApp#iphonesimulator-x86_64,no-debug");
@@ -1215,5 +1218,37 @@ public class AppleBundleIntegrationTest {
     assertTrue(
         "Resource file should exist.",
         Files.isRegularFile(outputPath.resolve("other_resource.txt")));
+  }
+
+  @Test
+  public void testCodesigningNotRequired() throws Exception {
+    ProjectWorkspace workspace =
+        TestDataHelper.createProjectWorkspaceForScenario(
+            this, "simple_application_bundle_no_debug_no_sign", tmp);
+    workspace.setUp();
+
+    BuildTarget target = workspace.newBuildTarget("//:DemoApp#iphoneos-arm64,no-debug");
+    workspace.runBuckCommand("build", target.getFullyQualifiedName()).assertSuccess();
+
+    workspace.verify(
+        Paths.get("DemoApp_output.expected"),
+        BuildTargets.getGenPath(
+            filesystem,
+            target.withAppendedFlavors(AppleDescriptions.NO_INCLUDE_FRAMEWORKS_FLAVOR),
+            "%s"));
+
+    Path appPath =
+        workspace.getPath(
+            BuildTargets.getGenPath(
+                    filesystem,
+                    target.withAppendedFlavors(AppleDescriptions.NO_INCLUDE_FRAMEWORKS_FLAVOR),
+                    "%s")
+                .resolve(target.getShortName() + ".app"));
+    assertTrue(Files.exists(appPath.resolve(target.getShortName())));
+
+    assertFalse(checkCodeSigning(appPath));
+
+    // Non-Swift target shouldn't include Frameworks/
+    assertFalse(Files.exists(appPath.resolve("Frameworks")));
   }
 }
