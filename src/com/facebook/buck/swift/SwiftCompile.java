@@ -215,15 +215,13 @@ public class SwiftCompile extends AbstractBuildRuleWithDeclaredAndExtraDeps {
         moduleName);
 
     if (swiftBuckConfig.shouldSplitSwiftModuleGeneration()) {
-      if (moduleOnly || hasMainEntry) {
-        compilerCommand.add(
-            "-emit-module",
-            "-emit-module-path",
-            modulePath.toString(),
-            "-emit-objc-header",
-            "-emit-objc-header-path",
-            headerPath.toString());
-      }
+      compilerCommand.add(
+          "-emit-module",
+          "-emit-module-path",
+          modulePath.toString(),
+          "-emit-objc-header",
+          "-emit-objc-header-path",
+          headerPath.toString());
 
       if (!moduleOnly) {
         compilerCommand.add("-c", "-emit-object");
