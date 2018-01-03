@@ -17,6 +17,7 @@
 package com.facebook.buck.apple;
 
 import static com.facebook.buck.apple.AppleAssetCatalog.validateAssetCatalogs;
+import static com.facebook.buck.apple.AppleBundle.CODE_SIGN_ENTITLEMENTS;
 import static com.facebook.buck.swift.SwiftDescriptions.SWIFT_EXTENSION;
 
 import com.facebook.buck.apple.platform_type.ApplePlatformType;
@@ -57,7 +58,9 @@ import com.facebook.buck.rules.SourceWithFlags;
 import com.facebook.buck.rules.TargetGraph;
 import com.facebook.buck.rules.TargetNode;
 import com.facebook.buck.rules.Tool;
+import com.facebook.buck.rules.coercer.PatternMatchedCollection;
 import com.facebook.buck.rules.coercer.SourceList;
+import com.facebook.buck.rules.macros.StringWithMacros;
 import com.facebook.buck.shell.AbstractGenruleDescription;
 import com.facebook.buck.util.HumanReadableException;
 import com.facebook.buck.util.Optionals;
@@ -83,6 +86,7 @@ import java.util.SortedSet;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -279,8 +283,9 @@ public class AppleDescriptions {
   public static void populateCxxBinaryDescriptionArg(
       SourcePathResolver resolver,
       CxxBinaryDescriptionArg.Builder output,
-      AppleNativeTargetDescriptionArg arg,
-      BuildTarget buildTarget) {
+      AppleBinaryDescriptionArg arg,
+      BuildTarget buildTarget,
+      ProjectFilesystem projectFilesystem) {
     populateCxxConstructorArg(
         resolver,
         arg,
@@ -289,6 +294,26 @@ public class AppleDescriptions {
         output::setHeaders,
         output::setHeaderNamespace);
     output.setDefaultPlatform(Optional.empty());
+
+    String entitlementsPath = arg.getInfoPlistSubstitutions().get(CODE_SIGN_ENTITLEMENTS);
+    if (entitlementsPath != null) {
+      final Path srcRoot = projectFilesystem.getRootPath().resolve(buildTarget.getBasePath());
+
+      PatternMatchedCollection.Builder<ImmutableList<StringWithMacros>> platformLinkerFlags =
+          PatternMatchedCollection.builder();
+      arg.getPlatformCompilerFlags()
+          .getPatternsAndValues()
+          .forEach(x -> platformLinkerFlags.add(x.getFirst(), x.getSecond()));
+      platformLinkerFlags.add(
+          Pattern.compile(ApplePlatform.IPHONESIMULATOR.getName()),
+          ImmutableList.of(
+              StringWithMacros.of(
+                  ImmutableList.of(
+                      Either.ofLeft(
+                          "-Wl,-sectcreate,__TEXT,__entitlements,"
+                              + srcRoot.resolve(entitlementsPath).toString())))));
+      output.setPlatformLinkerFlags(platformLinkerFlags.build());
+    }
   }
 
   public static void populateCxxLibraryDescriptionArg(

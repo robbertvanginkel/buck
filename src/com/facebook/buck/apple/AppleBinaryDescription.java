@@ -500,7 +500,7 @@ public class AppleBinaryDescription
             CxxBinaryDescriptionArg.Builder delegateArg =
                 CxxBinaryDescriptionArg.builder().from(args);
             AppleDescriptions.populateCxxBinaryDescriptionArg(
-                pathResolver, delegateArg, args, buildTarget);
+                pathResolver, delegateArg, args, buildTarget, projectFilesystem);
             return cxxBinaryFactory.createBuildRule(
                 buildTarget,
                 projectFilesystem,
@@ -551,7 +551,8 @@ public class AppleBinaryDescription
           DefaultSourcePathResolver.from(new SourcePathRuleFinder(resolver)),
           delegateArg,
           args,
-          buildTarget);
+          buildTarget,
+          );
       return cxxBinaryMetadataFactory.createMetadata(
           buildTarget, resolver, delegateArg.build().getDeps(), metadataClass);
     }
