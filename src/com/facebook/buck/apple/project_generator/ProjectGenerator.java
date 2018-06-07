@@ -136,7 +136,6 @@ import com.facebook.buck.shell.AbstractGenruleDescription;
 import com.facebook.buck.shell.ExportFileDescriptionArg;
 import com.facebook.buck.swift.SwiftBuckConfig;
 import com.facebook.buck.swift.SwiftCommonArg;
-import com.facebook.buck.swift.SwiftLibraryDescriptionArg;
 import com.facebook.buck.util.Escaper;
 import com.facebook.buck.util.MoreMaps;
 import com.facebook.buck.util.RichStream;
@@ -2648,14 +2647,6 @@ public class ProjectGenerator {
   }
 
   private String getModuleName(TargetNode<?, ?> buildTargetNode) {
-    Optional<String> swiftName =
-        buildTargetNode
-            .castArg(SwiftLibraryDescriptionArg.class)
-            .flatMap(node -> node.getConstructorArg().getModuleName());
-    if (swiftName.isPresent()) {
-      return swiftName.get();
-    }
-
     return buildTargetNode
         .castArg(CommonArg.class)
         .flatMap(node -> node.getConstructorArg().getModuleName())

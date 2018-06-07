@@ -27,7 +27,6 @@ import com.facebook.buck.graph.AcyclicDepthFirstPostOrderTraversal;
 import com.facebook.buck.graph.GraphTraversable;
 import com.facebook.buck.halide.HalideLibraryDescription;
 import com.facebook.buck.log.Logger;
-import com.facebook.buck.swift.SwiftLibraryDescription;
 import com.facebook.buck.util.RichStream;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -54,8 +53,7 @@ public final class AppleBuildRules {
               AppleBinaryDescription.class,
               AppleBundleDescription.class,
               AppleTestDescription.class,
-              HalideLibraryDescription.class,
-              SwiftLibraryDescription.class);
+              HalideLibraryDescription.class);
 
   private static final ImmutableSet<Class<? extends BuildRule>> XCODE_TARGET_BUILD_RULE_TEST_TYPES =
       ImmutableSet.of(AppleTest.class);

@@ -31,7 +31,6 @@ import com.facebook.buck.cxx.CxxLibraryMetadataFactory;
 import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.InferBuckConfig;
 import com.facebook.buck.swift.SwiftBuckConfig;
-import com.facebook.buck.swift.SwiftLibraryDescription;
 import com.facebook.buck.toolchain.ToolchainProvider;
 import java.util.Arrays;
 import java.util.Collection;
@@ -66,13 +65,9 @@ public class AppleDescriptionProvider implements DescriptionProvider {
     CxxLibraryMetadataFactory cxxLibraryMetadataFactory =
         new CxxLibraryMetadataFactory(toolchainProvider);
 
-    SwiftLibraryDescription swiftLibraryDescription =
-        new SwiftLibraryDescription(toolchainProvider, cxxBuckConfig, swiftBuckConfig);
-
     AppleLibraryDescription appleLibraryDescription =
         new AppleLibraryDescription(
             toolchainProvider,
-            swiftLibraryDescription,
             appleConfig,
             swiftBuckConfig,
             cxxLibraryImplicitFlavors,
@@ -83,7 +78,6 @@ public class AppleDescriptionProvider implements DescriptionProvider {
     AppleBinaryDescription appleBinaryDescription =
         new AppleBinaryDescription(
             toolchainProvider,
-            swiftLibraryDescription,
             appleConfig,
             swiftBuckConfig,
             cxxBinaryImplicitFlavors,

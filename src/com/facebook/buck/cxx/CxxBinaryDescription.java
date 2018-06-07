@@ -90,7 +90,6 @@ public class CxxBinaryDescription
         context.getActionGraphBuilder(),
         context.getCellPathResolver(),
         args,
-        ImmutableSortedSet.of(),
         Optional.empty());
   }
 

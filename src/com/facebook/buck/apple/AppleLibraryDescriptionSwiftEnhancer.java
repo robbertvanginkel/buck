@@ -25,21 +25,20 @@ import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
+import com.facebook.buck.cxx.CxxDescriptionEnhancer;
 import com.facebook.buck.cxx.CxxLibrary;
 import com.facebook.buck.cxx.CxxPreprocessorInput;
+import com.facebook.buck.cxx.DepsBuilder;
 import com.facebook.buck.cxx.HeaderSymlinkTreeWithHeaderMap;
 import com.facebook.buck.cxx.PreprocessorFlags;
 import com.facebook.buck.cxx.TransitiveCxxPreprocessorInputCache;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.HeaderVisibility;
-import com.facebook.buck.cxx.toolchain.Preprocessor;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.model.BuildTargets;
 import com.facebook.buck.swift.SwiftBuckConfig;
 import com.facebook.buck.swift.SwiftCompile;
 import com.facebook.buck.swift.SwiftDescriptions;
-import com.facebook.buck.swift.SwiftLibraryDescription;
-import com.facebook.buck.swift.SwiftLibraryDescriptionArg;
 import com.facebook.buck.util.RichStream;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
@@ -50,7 +49,7 @@ import java.nio.file.Paths;
 import java.util.Optional;
 
 public class AppleLibraryDescriptionSwiftEnhancer {
-  @SuppressWarnings("unused")
+
   public static BuildRule createSwiftCompileRule(
       BuildTarget target,
       CellPathResolver cellRoots,
@@ -59,18 +58,15 @@ public class AppleLibraryDescriptionSwiftEnhancer {
       BuildRuleParams params,
       AppleNativeTargetDescriptionArg args,
       ProjectFilesystem filesystem,
-      CxxPlatform platform,
+      CxxPlatform cxxPlatform,
       AppleCxxPlatform applePlatform,
       SwiftBuckConfig swiftBuckConfig,
       ImmutableSet<CxxPreprocessorInput> inputs) {
 
     SourcePathRuleFinder rulePathFinder = new SourcePathRuleFinder(graphBuilder);
-    SwiftLibraryDescriptionArg.Builder delegateArgsBuilder = SwiftLibraryDescriptionArg.builder();
-    SwiftDescriptions.populateSwiftLibraryDescriptionArg(
-        DefaultSourcePathResolver.from(rulePathFinder), delegateArgsBuilder, args, target);
-    SwiftLibraryDescriptionArg swiftArgs = delegateArgsBuilder.build();
-
-    Preprocessor preprocessor = platform.getCpp().resolve(graphBuilder);
+    ImmutableSortedSet<SourcePath> swiftSources =
+        SwiftDescriptions.filterSwiftSources(
+            DefaultSourcePathResolver.from(rulePathFinder), args.getSrcs());
 
     ImmutableSet<BuildRule> inputDeps =
         RichStream.from(inputs)
@@ -80,30 +76,40 @@ public class AppleLibraryDescriptionSwiftEnhancer {
     ImmutableSortedSet.Builder<BuildRule> sortedDeps = ImmutableSortedSet.naturalOrder();
     sortedDeps.addAll(inputDeps);
 
-    BuildRuleParams paramsWithDeps = params.withExtraDeps(sortedDeps.build());
-
     PreprocessorFlags.Builder flagsBuilder = PreprocessorFlags.builder();
     inputs.forEach(input -> flagsBuilder.addAllIncludes(input.getIncludes()));
     inputs.forEach(input -> flagsBuilder.addAllFrameworkPaths(input.getFrameworks()));
-    PreprocessorFlags preprocessorFlags = flagsBuilder.build();
 
-    Optional<CxxPreprocessorInput> underlyingModule =
-        AppleLibraryDescription.underlyingModuleCxxPreprocessorInput(target, graphBuilder, platform);
+    DepsBuilder srcsDepsBuilder = new DepsBuilder(ruleFinder);
+    swiftSources.forEach(src -> srcsDepsBuilder.add(src));
 
-    return SwiftLibraryDescription.createSwiftCompileRule(
-        platform,
-        applePlatform.getSwiftPlatform().get(),
+    return new SwiftCompile(
+        cxxPlatform,
         swiftBuckConfig,
         target,
-        paramsWithDeps,
-        graphBuilder,
-        rulePathFinder,
-        cellRoots,
         filesystem,
-        swiftArgs,
-        preprocessor,
-        preprocessorFlags,
-        underlyingModule.isPresent());
+        params
+            .copyAppendingExtraDeps(srcsDepsBuilder.build())
+            .copyAppendingExtraDeps(sortedDeps.build()),
+        applePlatform.getSwiftPlatform().get().getSwiftc(),
+        args.getFrameworks(),
+        args.getModuleName().orElse(target.getShortName()),
+        BuildTargets.getGenPath(filesystem, target, "%s"),
+        swiftSources,
+        args.getSwiftVersion(),
+        RichStream.from(args.getCompilerFlags())
+            .map(
+                f ->
+                    CxxDescriptionEnhancer.toStringWithMacrosArgs(
+                        target, cellRoots, graphBuilder, cxxPlatform, f))
+            .toImmutableList(),
+        Optional.empty(),
+        args.getBridgingHeader(),
+        cxxPlatform.getCpp().resolve(graphBuilder),
+        flagsBuilder.build(),
+        AppleLibraryDescription.underlyingModuleCxxPreprocessorInput(
+                target, graphBuilder, cxxPlatform)
+            .isPresent());
   }
 
   /**

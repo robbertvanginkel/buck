@@ -45,7 +45,6 @@ import com.facebook.buck.cxx.toolchain.DefaultCxxPlatforms;
 import com.facebook.buck.cxx.toolchain.InferBuckConfig;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.swift.SwiftBuckConfig;
-import com.facebook.buck.swift.SwiftLibraryDescription;
 import com.facebook.buck.swift.toolchain.SwiftPlatform;
 import com.facebook.buck.swift.toolchain.SwiftPlatformsProvider;
 import com.facebook.buck.testutil.FakeProjectFilesystem;
@@ -249,11 +248,6 @@ public class FakeAppleRuleDescriptions {
               DEFAULT_WATCHOS_ARMV7K_PLATFORM.getFlavor(),
               DEFAULT_WATCHOS_ARMV7K_PLATFORM.getSwiftPlatform().get()));
 
-  public static final SwiftLibraryDescription SWIFT_LIBRARY_DESCRIPTION =
-      new SwiftLibraryDescription(
-          createTestToolchainProviderForSwiftPlatform(DEFAULT_SWIFT_PLATFORM_FLAVOR_DOMAIN),
-          CxxPlatformUtils.DEFAULT_CONFIG,
-          new SwiftBuckConfig(DEFAULT_BUCK_CONFIG));
   /** A fake apple_library description with an iOS platform for use in tests. */
   public static final AppleLibraryDescription LIBRARY_DESCRIPTION = createAppleLibraryDescription();
 
@@ -275,7 +269,6 @@ public class FakeAppleRuleDescriptions {
 
     return new AppleLibraryDescription(
         toolchainProvider,
-        SWIFT_LIBRARY_DESCRIPTION,
         DEFAULT_BUCK_CONFIG.getView(AppleConfig.class),
         new SwiftBuckConfig(DEFAULT_BUCK_CONFIG),
         cxxLibraryImplicitFlavors,
@@ -309,7 +302,6 @@ public class FakeAppleRuleDescriptions {
 
     return new AppleBinaryDescription(
         createTestToolchainProviderForApplePlatform(DEFAULT_APPLE_CXX_PLATFORM_FLAVOR_DOMAIN),
-        SWIFT_LIBRARY_DESCRIPTION,
         DEFAULT_BUCK_CONFIG.getView(AppleConfig.class),
         DEFAULT_BUCK_CONFIG.getView(SwiftBuckConfig.class),
         cxxBinaryImplicitFlavors,

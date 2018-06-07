@@ -64,7 +64,6 @@ public class CxxBinaryFactory {
       ActionGraphBuilder graphBuilder,
       CellPathResolver cellRoots,
       CxxBinaryDescriptionArg args,
-      ImmutableSortedSet<BuildTarget> extraCxxDeps,
       Optional<CxxDescriptionDelegate> delegate) {
 
     // We explicitly remove some flavors below from params to make sure rule
@@ -146,7 +145,7 @@ public class CxxBinaryFactory {
             cxxBuckConfig,
             cxxPlatform,
             args,
-            extraCxxDeps,
+            ImmutableSet.of(),
             flavoredStripStyle,
             flavoredLinkerMapMode,
             delegate);
