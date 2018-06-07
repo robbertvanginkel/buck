@@ -41,6 +41,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSortedSet;
+import java.util.Optional;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
@@ -58,6 +59,7 @@ public class CxxBinary extends AbstractBuildRuleWithDeclaredAndExtraDeps
   private final ImmutableSortedSet<BuildTarget> tests;
   private final ImmutableSortedSet<FrameworkPath> frameworks;
   private final BuildTarget platformlessTarget;
+  private final Optional<CxxDescriptionDelegate> delegate;
   private final boolean cacheable;
 
   public CxxBinary(
@@ -70,6 +72,7 @@ public class CxxBinary extends AbstractBuildRuleWithDeclaredAndExtraDeps
       Iterable<FrameworkPath> frameworks,
       Iterable<BuildTarget> tests,
       BuildTarget platformlessTarget,
+      Optional<CxxDescriptionDelegate> delegate,
       boolean cacheable) {
     super(buildTarget, projectFilesystem, params);
     this.cxxPlatform = cxxPlatform;
@@ -78,6 +81,7 @@ public class CxxBinary extends AbstractBuildRuleWithDeclaredAndExtraDeps
     this.tests = ImmutableSortedSet.copyOf(tests);
     this.frameworks = ImmutableSortedSet.copyOf(frameworks);
     this.platformlessTarget = platformlessTarget;
+    this.delegate = delegate;
     this.cacheable = cacheable;
     performChecks();
   }
@@ -136,15 +140,24 @@ public class CxxBinary extends AbstractBuildRuleWithDeclaredAndExtraDeps
   @Override
   public CxxPreprocessorInput getPrivateCxxPreprocessorInput(
       CxxPlatform cxxPlatform, ActionGraphBuilder graphBuilder) {
-    return CxxPreprocessables.getCxxPreprocessorInput(
-        platformlessTarget,
-        graphBuilder,
-        /* hasHeaderSymlinkTree */ true,
-        cxxPlatform,
-        HeaderVisibility.PRIVATE,
-        CxxPreprocessables.IncludeType.LOCAL,
-        ImmutableMultimap.of(),
-        frameworks);
+    CxxPreprocessorInput privateInput =
+        CxxPreprocessables.getCxxPreprocessorInput(
+            platformlessTarget,
+            graphBuilder,
+            /* hasHeaderSymlinkTree */ true,
+            cxxPlatform,
+            HeaderVisibility.PRIVATE,
+            CxxPreprocessables.IncludeType.LOCAL,
+            ImmutableMultimap.of(),
+            frameworks);
+    Optional<CxxPreprocessorInput> delegateInput =
+        delegate.flatMap(
+            p -> p.getPrivatePreprocessorInput(getBuildTarget(), graphBuilder, cxxPlatform));
+
+    if (delegateInput.isPresent()) {
+      return CxxPreprocessorInput.concat(ImmutableList.of(privateInput, delegateInput.get()));
+    }
+    return privateInput;
   }
 
   @Override

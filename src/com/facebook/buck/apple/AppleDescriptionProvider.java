@@ -85,6 +85,7 @@ public class AppleDescriptionProvider implements DescriptionProvider {
             toolchainProvider,
             swiftLibraryDescription,
             appleConfig,
+            swiftBuckConfig,
             cxxBinaryImplicitFlavors,
             cxxBinaryFactory,
             cxxBinaryMetadataFactory,

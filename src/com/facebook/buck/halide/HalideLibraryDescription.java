@@ -182,7 +182,8 @@ public class HalideLibraryDescription
             platformLinkerFlags,
             Optional.empty(),
             includeDirs,
-            rawHeaders);
+            rawHeaders,
+            Optional.empty());
 
     buildTarget = CxxStrip.restoreStripStyleFlavorInTarget(buildTarget, flavoredStripStyle);
     buildTarget =
@@ -198,6 +199,7 @@ public class HalideLibraryDescription
         ImmutableSortedSet.of(),
         ImmutableSortedSet.of(),
         buildTarget.withoutFlavors(cxxPlatformsProvider.getCxxPlatforms().getFlavors()),
+        Optional.empty(),
         cxxBuckConfig.shouldCacheBinaries());
   }
 

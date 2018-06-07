@@ -83,6 +83,7 @@ public class CxxBinaryTest {
                 ImmutableSortedSet.of(),
                 ImmutableList.of(),
                 target,
+                Optional.empty(),
                 false));
     ImmutableList<String> command = binary.getExecutableCommand().getCommandPrefix(pathResolver);
     assertTrue(Paths.get(command.get(0)).isAbsolute());

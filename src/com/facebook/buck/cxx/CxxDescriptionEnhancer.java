@@ -789,7 +789,8 @@ public class CxxDescriptionEnhancer {
       CommonArg args,
       ImmutableSet<BuildTarget> extraDeps,
       Optional<StripStyle> stripStyle,
-      Optional<LinkerMapMode> flavoredLinkerMapMode) {
+      Optional<LinkerMapMode> flavoredLinkerMapMode,
+      Optional<CxxDescriptionDelegate> delegate) {
 
     SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
     SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
@@ -816,10 +817,7 @@ public class CxxDescriptionEnhancer {
     extraDeps.stream().map(graphBuilder::getRule).forEach(depsBuilder::add);
     ImmutableSortedSet<BuildRule> deps = depsBuilder.build();
 
-    CxxLinkOptions linkOptions =
-        CxxLinkOptions.of(
-            args.getThinLto()
-            );
+    CxxLinkOptions linkOptions = CxxLinkOptions.of(args.getThinLto());
     return createBuildRulesForCxxBinary(
         target,
         projectFilesystem,
@@ -852,7 +850,8 @@ public class CxxDescriptionEnhancer {
         args.getPlatformLinkerFlags(),
         args.getCxxRuntimeType(),
         args.getIncludeDirs(),
-        args.getRawHeaders());
+        args.getRawHeaders(),
+        delegate);
   }
 
   public static CxxLinkAndCompileRules createBuildRulesForCxxBinary(
@@ -885,7 +884,8 @@ public class CxxDescriptionEnhancer {
       PatternMatchedCollection<ImmutableList<StringWithMacros>> platformLinkerFlags,
       Optional<CxxRuntimeType> cxxRuntimeType,
       ImmutableList<String> includeDirs,
-      ImmutableSortedSet<SourcePath> rawHeaders) {
+      ImmutableSortedSet<SourcePath> rawHeaders,
+      Optional<CxxDescriptionDelegate> delegate) {
     SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
     SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
     //    TODO(beefon): should be:
@@ -917,6 +917,13 @@ public class CxxDescriptionEnhancer {
             headers,
             HeaderVisibility.PRIVATE,
             shouldCreatePrivateHeadersSymlinks);
+    ImmutableList.Builder<HeaderSymlinkTree> privateHeaderSymlinkTrees = ImmutableList.builder();
+    privateHeaderSymlinkTrees.add(headerSymlinkTree);
+    delegate.ifPresent(
+        d ->
+            d.getPrivateHeaderSymlinkTree(target, graphBuilder, cxxPlatform)
+                .ifPresent(h -> privateHeaderSymlinkTrees.add(h)));
+
     Optional<SymlinkTree> sandboxTree = Optional.empty();
     if (cxxBuckConfig.sandboxSources()) {
       sandboxTree = createSandboxTree(target, graphBuilder, cxxPlatform);
@@ -935,7 +942,7 @@ public class CxxDescriptionEnhancer {
                         langPreprocessorFlags,
                         cxxPlatform),
                     f -> toStringWithMacrosArgs(target, cellRoots, graphBuilder, cxxPlatform, f))),
-            ImmutableList.of(headerSymlinkTree),
+            privateHeaderSymlinkTrees.build(),
             frameworks,
             CxxPreprocessables.getTransitiveCxxPreprocessorInput(
                 cxxPlatform,
@@ -1042,6 +1049,20 @@ public class CxxDescriptionEnhancer {
                 })
             .collect(ImmutableList.toImmutableList());
     argsBuilder.addAll(FileListableLinkerInputArg.from(objectArgs));
+    Optional<ImmutableList<SourcePath>> pluginObjectPaths =
+        delegate.flatMap(p -> p.getObjectFilePaths(target, graphBuilder, cxxPlatform));
+    pluginObjectPaths.ifPresent(paths -> argsBuilder.addAll(SourcePathArg.from(paths)));
+
+    ImmutableList<NativeLinkable> delegateNativeLinkables =
+        delegate
+            .flatMap(d -> d.getNativeLinkableExportedDeps(target, graphBuilder, cxxPlatform))
+            .orElse(ImmutableList.of());
+
+    ImmutableList<NativeLinkable> allNativeLinkables =
+        RichStream.from(deps)
+            .filter(NativeLinkable.class)
+            .concat(RichStream.from(delegateNativeLinkables))
+            .toImmutableList();
 
     CxxLink cxxLink =
         (CxxLink)
@@ -1064,7 +1085,7 @@ public class CxxDescriptionEnhancer {
                         linkerExtraOutputs,
                         linkStyle,
                         linkOptions,
-                        RichStream.from(deps).filter(NativeLinkable.class).toImmutableList(),
+                        allNativeLinkables,
                         cxxRuntimeType,
                         Optional.empty(),
                         ImmutableSet.of(),

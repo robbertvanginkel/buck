@@ -107,7 +107,7 @@ public class CxxLibraryFactory {
       ImmutableSortedSet<BuildTarget> extraDeps,
       CxxLibraryDescription.TransitiveCxxPreprocessorInputFunction
           transitiveCxxPreprocessorInputFunction,
-      Optional<CxxLibraryDescriptionDelegate> delegate) {
+      Optional<CxxDescriptionDelegate> delegate) {
 
     CxxPlatformsProvider cxxPlatformsProvider = getCxxPlatformsProvider();
     FlavorDomain<CxxPlatform> cxxPlatforms = cxxPlatformsProvider.getCxxPlatforms();
@@ -404,7 +404,7 @@ public class CxxLibraryFactory {
       CxxLibraryDescriptionArg args,
       ImmutableSet<BuildRule> deps,
       CxxLibraryDescription.TransitiveCxxPreprocessorInputFunction transitivePreprocessorInputs,
-      Optional<CxxLibraryDescriptionDelegate> delegate) {
+      Optional<CxxDescriptionDelegate> delegate) {
 
     // TODO(T21900747): Fix dependence on order of object paths
     ImmutableList.Builder<SourcePath> builder = ImmutableList.builder();
@@ -446,7 +446,7 @@ public class CxxLibraryFactory {
       CxxLibraryDescriptionArg args,
       ImmutableSet<BuildRule> deps,
       CxxLibraryDescription.TransitiveCxxPreprocessorInputFunction transitivePreprocessorInputs,
-      Optional<CxxLibraryDescriptionDelegate> delegate) {
+      Optional<CxxDescriptionDelegate> delegate) {
 
     boolean shouldCreatePrivateHeadersSymlinks =
         args.getXcodePrivateHeadersSymlinks()
@@ -540,7 +540,7 @@ public class CxxLibraryFactory {
       ImmutableSet<FrameworkPath> libraries,
       CxxLibraryDescription.TransitiveCxxPreprocessorInputFunction
           transitiveCxxPreprocessorInputFunction,
-      Optional<CxxLibraryDescriptionDelegate> delegate) {
+      Optional<CxxDescriptionDelegate> delegate) {
 
     // Create rules for compiling the PIC object files.
     ImmutableList<SourcePath> objects =
@@ -602,7 +602,7 @@ public class CxxLibraryFactory {
       ImmutableSet<BuildTarget> blacklist,
       CxxLibraryDescription.TransitiveCxxPreprocessorInputFunction
           transitiveCxxPreprocessorInputFunction,
-      Optional<CxxLibraryDescriptionDelegate> delegate) {
+      Optional<CxxDescriptionDelegate> delegate) {
     BuildTarget buildTargetWithoutLinkerMapMode =
         LinkerMapMode.removeLinkerMapModeFlavorInTarget(
             buildTargetMaybeWithLinkerMapMode,
@@ -648,10 +648,7 @@ public class CxxLibraryFactory {
             .concat(RichStream.from(delegateNativeLinkables))
             .toImmutableList();
 
-    CxxLinkOptions linkOptions =
-        CxxLinkOptions.of(
-            args.getThinLto()
-            );
+    CxxLinkOptions linkOptions = CxxLinkOptions.of(args.getThinLto());
     return CxxLinkableEnhancer.createCxxLinkableBuildRule(
         cxxBuckConfig,
         cxxPlatform,
@@ -770,7 +767,7 @@ public class CxxLibraryFactory {
       PicType pic,
       CxxLibraryDescription.TransitiveCxxPreprocessorInputFunction
           transitiveCxxPreprocessorInputFunction,
-      Optional<CxxLibraryDescriptionDelegate> delegate) {
+      Optional<CxxDescriptionDelegate> delegate) {
     SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
     SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
 
@@ -842,7 +839,7 @@ public class CxxLibraryFactory {
       ImmutableSet<BuildTarget> blacklist,
       CxxLibraryDescription.TransitiveCxxPreprocessorInputFunction
           transitiveCxxPreprocessorInputFunction,
-      Optional<CxxLibraryDescriptionDelegate> delegate) {
+      Optional<CxxDescriptionDelegate> delegate) {
     ImmutableList.Builder<StringWithMacros> linkerFlags = ImmutableList.builder();
 
     linkerFlags.addAll(

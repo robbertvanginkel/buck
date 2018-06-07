@@ -1221,7 +1221,7 @@ public class AppleBinaryIntegrationTest {
 
     workspace
         .getBuildLog()
-        .assertTargetBuiltLocally("//:binary#iphonesimulator-x86_64,swift-compile");
+        .assertTargetBuiltLocally("//:binary#iphonesimulator-x86_64,apple-swift-compile");
   }
 
   @Test

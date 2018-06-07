@@ -20,7 +20,6 @@ import static com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable.Linkage;
 import static com.facebook.buck.swift.SwiftLibraryDescription.isSwiftTarget;
 
 import com.facebook.buck.apple.toolchain.AppleCxxPlatform;
-import com.facebook.buck.apple.toolchain.AppleCxxPlatformsProvider;
 import com.facebook.buck.apple.toolchain.CodeSignIdentityStore;
 import com.facebook.buck.apple.toolchain.ProvisioningProfileStore;
 import com.facebook.buck.core.cell.resolver.CellPathResolver;
@@ -48,12 +47,10 @@ import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.cxx.CxxCompilationDatabase;
+import com.facebook.buck.cxx.CxxDescriptionDelegate;
 import com.facebook.buck.cxx.CxxDescriptionEnhancer;
-import com.facebook.buck.cxx.CxxHeaders;
-import com.facebook.buck.cxx.CxxHeadersDir;
 import com.facebook.buck.cxx.CxxLibraryDescription;
 import com.facebook.buck.cxx.CxxLibraryDescriptionArg;
-import com.facebook.buck.cxx.CxxLibraryDescriptionDelegate;
 import com.facebook.buck.cxx.CxxLibraryFactory;
 import com.facebook.buck.cxx.CxxLibraryFlavored;
 import com.facebook.buck.cxx.CxxLibraryImplicitFlavors;
@@ -64,26 +61,18 @@ import com.facebook.buck.cxx.CxxStrip;
 import com.facebook.buck.cxx.CxxSymlinkTreeHeaders;
 import com.facebook.buck.cxx.FrameworkDependencies;
 import com.facebook.buck.cxx.HasAppleDebugSymbolDeps;
-import com.facebook.buck.cxx.HeaderSymlinkTreeWithHeaderMap;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformsProvider;
 import com.facebook.buck.cxx.toolchain.HeaderMode;
 import com.facebook.buck.cxx.toolchain.HeaderSymlinkTree;
-import com.facebook.buck.cxx.toolchain.HeaderSymlinkTreeWithModuleMap;
 import com.facebook.buck.cxx.toolchain.HeaderVisibility;
 import com.facebook.buck.cxx.toolchain.LinkerMapMode;
 import com.facebook.buck.cxx.toolchain.StripStyle;
 import com.facebook.buck.cxx.toolchain.linker.Linker;
-import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.model.BuildTargets;
-import com.facebook.buck.rules.args.Arg;
 import com.facebook.buck.swift.SwiftBuckConfig;
-import com.facebook.buck.swift.SwiftCompile;
 import com.facebook.buck.swift.SwiftLibraryDescription;
-import com.facebook.buck.swift.SwiftRuntimeNativeLinkable;
-import com.facebook.buck.swift.toolchain.SwiftPlatform;
-import com.facebook.buck.swift.toolchain.SwiftPlatformsProvider;
 import com.facebook.buck.toolchain.ToolchainProvider;
 import com.facebook.buck.util.types.Either;
 import com.facebook.buck.versions.Version;
@@ -113,7 +102,7 @@ public class AppleLibraryDescription
             AppleLibraryDescription.AbstractAppleLibraryDescriptionArg>,
         ImplicitFlavorsInferringDescription,
         MetadataProvidingDescription<AppleLibraryDescriptionArg>,
-        CxxLibraryDescriptionDelegate {
+        AppleNativeTargetCxxDescriptionDelegate {
 
   @SuppressWarnings("PMD") // PMD doesn't understand method references
   private static final Set<Flavor> SUPPORTED_FLAVORS =
@@ -161,31 +150,6 @@ public class AppleLibraryDescription
       return flavor;
     }
   }
-
-  enum MetadataType implements FlavorConvertible {
-    APPLE_SWIFT_METADATA(InternalFlavor.of("swift-metadata")),
-    APPLE_SWIFT_EXPORTED_OBJC_CXX_HEADERS(InternalFlavor.of("swift-objc-cxx-headers")),
-    APPLE_SWIFT_OBJC_CXX_HEADERS(InternalFlavor.of("swift-private-objc-cxx-headers")),
-    APPLE_SWIFT_MODULE_CXX_HEADERS(InternalFlavor.of("swift-module-cxx-headers")),
-    APPLE_SWIFT_PREPROCESSOR_INPUT(InternalFlavor.of("swift-preprocessor-input")),
-    APPLE_SWIFT_PRIVATE_PREPROCESSOR_INPUT(InternalFlavor.of("swift-private-preprocessor-input")),
-    APPLE_SWIFT_UNDERLYING_MODULE_INPUT(InternalFlavor.of("swift-underlying-module-input")),
-    ;
-
-    private final Flavor flavor;
-
-    MetadataType(Flavor flavor) {
-      this.flavor = flavor;
-    }
-
-    @Override
-    public Flavor getFlavor() {
-      return flavor;
-    }
-  }
-
-  public static final FlavorDomain<MetadataType> METADATA_TYPE =
-      FlavorDomain.from("Apple Library Metadata Type", AppleLibraryDescription.MetadataType.class);
 
   public static final FlavorDomain<Type> LIBRARY_TYPE =
       FlavorDomain.from("C/C++ Library Type", Type.class);
@@ -635,7 +599,7 @@ public class AppleLibraryDescription
     return graphBuilder.computeIfAbsent(
         unstrippedTarget,
         unstrippedTarget1 -> {
-          Optional<CxxLibraryDescriptionDelegate> cxxDelegate =
+          Optional<CxxDescriptionDelegate> cxxDelegate =
               swiftDelegate.isPresent() ? Optional.empty() : Optional.of(this);
           return cxxLibraryFactory.createBuildRule(
               unstrippedTarget1,
@@ -685,11 +649,7 @@ public class AppleLibraryDescription
                 pathResolver::getRelativePath,
                 headerPathPrefix,
                 args.getExportedHeaders())));
-    if (targetContainsSwift(buildTarget, graphBuilder)) {
-      headers.putAll(
-          AppleLibraryDescriptionSwiftEnhancer.getObjCGeneratedHeader(
-              buildTarget, graphBuilder, cxxPlatform, HeaderVisibility.PUBLIC));
-    }
+    getSwiftGeneratedObjCHeader(buildTarget, graphBuilder, cxxPlatform).ifPresent(headers::putAll);
 
     return CxxDescriptionEnhancer.createHeaderSymlinkTree(
         buildTarget,
@@ -790,107 +750,9 @@ public class AppleLibraryDescription
     }
 
     Optional<Map.Entry<Flavor, MetadataType>> metaType =
-        METADATA_TYPE.getFlavorAndValue(buildTarget);
+        AppleNativeTargetCxxDescriptionDelegate.METADATA_TYPE.getFlavorAndValue(buildTarget);
     if (metaType.isPresent()) {
-      BuildTarget baseTarget = buildTarget.withoutFlavors(metaType.get().getKey());
-      switch (metaType.get().getValue()) {
-        case APPLE_SWIFT_METADATA:
-          {
-            AppleLibrarySwiftMetadata metadata =
-                AppleLibrarySwiftMetadata.from(args.getSrcs(), pathResolver);
-            return Optional.of(metadata).map(metadataClass::cast);
-          }
-
-        case APPLE_SWIFT_EXPORTED_OBJC_CXX_HEADERS:
-          {
-            BuildTarget swiftHeadersTarget =
-                baseTarget.withAppendedFlavors(
-                    Type.SWIFT_EXPORTED_OBJC_GENERATED_HEADER.getFlavor());
-            HeaderSymlinkTreeWithHeaderMap headersRule =
-                (HeaderSymlinkTreeWithHeaderMap) graphBuilder.requireRule(swiftHeadersTarget);
-
-            CxxHeaders headers =
-                CxxSymlinkTreeHeaders.from(headersRule, CxxPreprocessables.IncludeType.LOCAL);
-            return Optional.of(headers).map(metadataClass::cast);
-          }
-
-        case APPLE_SWIFT_OBJC_CXX_HEADERS:
-          {
-            BuildTarget swiftHeadersTarget =
-                baseTarget.withAppendedFlavors(Type.SWIFT_OBJC_GENERATED_HEADER.getFlavor());
-            HeaderSymlinkTreeWithHeaderMap headersRule =
-                (HeaderSymlinkTreeWithHeaderMap) graphBuilder.requireRule(swiftHeadersTarget);
-
-            CxxHeaders headers =
-                CxxSymlinkTreeHeaders.from(headersRule, CxxPreprocessables.IncludeType.LOCAL);
-            return Optional.of(headers).map(metadataClass::cast);
-          }
-
-        case APPLE_SWIFT_MODULE_CXX_HEADERS:
-          {
-            BuildTarget swiftCompileTarget =
-                baseTarget.withAppendedFlavors(Type.SWIFT_COMPILE.getFlavor());
-            SwiftCompile compile = (SwiftCompile) graphBuilder.requireRule(swiftCompileTarget);
-
-            CxxHeaders headers =
-                CxxHeadersDir.of(CxxPreprocessables.IncludeType.LOCAL, compile.getOutputPath());
-            return Optional.of(headers).map(metadataClass::cast);
-          }
-
-        case APPLE_SWIFT_PREPROCESSOR_INPUT:
-          {
-            BuildTarget moduleHeadersTarget =
-                baseTarget.withAppendedFlavors(
-                    MetadataType.APPLE_SWIFT_MODULE_CXX_HEADERS.getFlavor());
-            Optional<CxxHeaders> moduleHeaders =
-                graphBuilder.requireMetadata(moduleHeadersTarget, CxxHeaders.class);
-
-            BuildTarget objcHeadersTarget =
-                baseTarget.withAppendedFlavors(
-                    MetadataType.APPLE_SWIFT_EXPORTED_OBJC_CXX_HEADERS.getFlavor());
-            Optional<CxxHeaders> objcHeaders =
-                graphBuilder.requireMetadata(objcHeadersTarget, CxxHeaders.class);
-
-            CxxPreprocessorInput.Builder builder = CxxPreprocessorInput.builder();
-            moduleHeaders.ifPresent(s -> builder.addIncludes(s));
-            objcHeaders.ifPresent(s -> builder.addIncludes(s));
-
-            CxxPreprocessorInput input = builder.build();
-            return Optional.of(input).map(metadataClass::cast);
-          }
-
-        case APPLE_SWIFT_PRIVATE_PREPROCESSOR_INPUT:
-          {
-            BuildTarget objcHeadersTarget =
-                baseTarget.withAppendedFlavors(
-                    MetadataType.APPLE_SWIFT_OBJC_CXX_HEADERS.getFlavor());
-            Optional<CxxHeaders> objcHeaders =
-                graphBuilder.requireMetadata(objcHeadersTarget, CxxHeaders.class);
-
-            CxxPreprocessorInput.Builder builder = CxxPreprocessorInput.builder();
-            objcHeaders.ifPresent(s -> builder.addIncludes(s));
-
-            CxxPreprocessorInput input = builder.build();
-            return Optional.of(input).map(metadataClass::cast);
-          }
-        case APPLE_SWIFT_UNDERLYING_MODULE_INPUT:
-          {
-            if (!args.isModular()) {
-              return Optional.empty();
-            }
-            BuildTarget swiftCompileTarget =
-                baseTarget.withAppendedFlavors(Type.SWIFT_UNDERLYING_MODULE.getFlavor());
-            HeaderSymlinkTreeWithModuleMap modulemap =
-                (HeaderSymlinkTreeWithModuleMap) graphBuilder.requireRule(swiftCompileTarget);
-            if (modulemap.getLinks().size() > 0) {
-              CxxPreprocessorInput.Builder builder = CxxPreprocessorInput.builder();
-              builder.addIncludes(
-                  CxxSymlinkTreeHeaders.from(modulemap, CxxPreprocessables.IncludeType.LOCAL));
-              return Optional.of(builder.build()).map(metadataClass::cast);
-            }
-            return Optional.empty();
-          }
-      }
+      return createSwiftMetadata(buildTarget, graphBuilder, args, metadataClass);
     }
 
     return Optional.empty();
@@ -1006,39 +868,11 @@ public class AppleLibraryDescription
     ImmutableMap<String, String> getInfoPlistSubstitutions();
   }
 
-  // CxxLibraryDescriptionDelegate
+  // CxxDescriptionDelegate
 
-  private static boolean targetContainsSwift(BuildTarget target, ActionGraphBuilder graphBuilder) {
-    BuildTarget metadataTarget = target.withFlavors(MetadataType.APPLE_SWIFT_METADATA.getFlavor());
-    Optional<AppleLibrarySwiftMetadata> metadata =
-        graphBuilder.requireMetadata(metadataTarget, AppleLibrarySwiftMetadata.class);
-    return metadata.map(m -> !m.getSwiftSources().isEmpty()).orElse(false);
-  }
-
-  public static Optional<CxxPreprocessorInput> queryMetadataCxxSwiftPreprocessorInput(
-      ActionGraphBuilder graphBuilder,
-      BuildTarget baseTarget,
-      CxxPlatform platform,
-      HeaderVisibility headerVisibility) {
-    if (!targetContainsSwift(baseTarget, graphBuilder)) {
-      return Optional.empty();
-    }
-
-    MetadataType metadataType = null;
-    switch (headerVisibility) {
-      case PUBLIC:
-        metadataType = MetadataType.APPLE_SWIFT_PREPROCESSOR_INPUT;
-        break;
-      case PRIVATE:
-        metadataType = MetadataType.APPLE_SWIFT_PRIVATE_PREPROCESSOR_INPUT;
-        break;
-    }
-
-    Preconditions.checkNotNull(metadataType);
-
-    return graphBuilder.requireMetadata(
-        baseTarget.withAppendedFlavors(metadataType.getFlavor(), platform.getFlavor()),
-        CxxPreprocessorInput.class);
+  @Override
+  public ToolchainProvider toolchainProvider() {
+    return toolchainProvider;
   }
 
   public static Optional<CxxPreprocessorInput> underlyingModuleCxxPreprocessorInput(
@@ -1048,117 +882,5 @@ public class AppleLibraryDescription
             platform.getFlavor(),
             AppleLibraryDescription.MetadataType.APPLE_SWIFT_UNDERLYING_MODULE_INPUT.getFlavor()),
         CxxPreprocessorInput.class);
-  }
-
-  @Override
-  public Optional<CxxPreprocessorInput> getPreprocessorInput(
-      BuildTarget target, ActionGraphBuilder graphBuilder, CxxPlatform platform) {
-    if (!targetContainsSwift(target, graphBuilder)) {
-      return Optional.empty();
-    }
-
-    return queryMetadataCxxSwiftPreprocessorInput(
-        graphBuilder, target, platform, HeaderVisibility.PUBLIC);
-  }
-
-  @Override
-  public Optional<CxxPreprocessorInput> getPrivatePreprocessorInput(
-      BuildTarget target, ActionGraphBuilder graphBuilder, CxxPlatform platform) {
-    if (!targetContainsSwift(target, graphBuilder)) {
-      return Optional.empty();
-    }
-
-    return queryMetadataCxxSwiftPreprocessorInput(
-        graphBuilder, target, platform, HeaderVisibility.PRIVATE);
-  }
-
-  @Override
-  public Optional<HeaderSymlinkTree> getPrivateHeaderSymlinkTree(
-      BuildTarget buildTarget, ActionGraphBuilder graphBuilder, CxxPlatform cxxPlatform) {
-    if (!targetContainsSwift(buildTarget, graphBuilder)) {
-      return Optional.empty();
-    }
-
-    BuildTarget ruleTarget =
-        AppleLibraryDescriptionSwiftEnhancer.createBuildTargetForObjCGeneratedHeaderBuildRule(
-            buildTarget, HeaderVisibility.PRIVATE, cxxPlatform);
-    BuildRule headerRule = graphBuilder.requireRule(ruleTarget);
-    if (headerRule instanceof HeaderSymlinkTree) {
-      return Optional.of((HeaderSymlinkTree) headerRule);
-    }
-
-    return Optional.empty();
-  }
-
-  @Override
-  public Optional<ImmutableList<SourcePath>> getObjectFilePaths(
-      BuildTarget target, ActionGraphBuilder graphBuilder, CxxPlatform cxxPlatform) {
-    if (!targetContainsSwift(target, graphBuilder)) {
-      return Optional.empty();
-    }
-
-    BuildTarget swiftTarget =
-        AppleLibraryDescriptionSwiftEnhancer.createBuildTargetForSwiftCompile(target, cxxPlatform);
-    SwiftCompile compile = (SwiftCompile) graphBuilder.requireRule(swiftTarget);
-    return Optional.of(compile.getObjectPaths());
-  }
-
-  @Override
-  public Optional<ImmutableList<NativeLinkable>> getNativeLinkableExportedDeps(
-      BuildTarget target, ActionGraphBuilder graphBuilder, CxxPlatform platform) {
-    if (!targetContainsSwift(target, graphBuilder)) {
-      return Optional.empty();
-    }
-
-    SwiftPlatformsProvider swiftPlatformsProvider =
-        toolchainProvider.getByName(
-            SwiftPlatformsProvider.DEFAULT_NAME, SwiftPlatformsProvider.class);
-    FlavorDomain<SwiftPlatform> swiftPlatformFlavorDomain =
-        swiftPlatformsProvider.getSwiftCxxPlatforms();
-
-    BuildTarget targetWithPlatform = target.withAppendedFlavors(platform.getFlavor());
-    Optional<SwiftPlatform> swiftPlatform = swiftPlatformFlavorDomain.getValue(targetWithPlatform);
-    if (swiftPlatform.isPresent()) {
-      return Optional.of(ImmutableList.of(new SwiftRuntimeNativeLinkable(swiftPlatform.get())));
-    }
-
-    return Optional.empty();
-  }
-
-  @Override
-  public ImmutableList<Arg> getAdditionalExportedLinkerFlags(
-      BuildTarget target, ActionGraphBuilder graphBuilder, CxxPlatform cxxPlatform) {
-    if (!targetContainsSwift(target, graphBuilder)) {
-      return ImmutableList.of();
-    }
-
-    BuildTarget swiftTarget =
-        AppleLibraryDescriptionSwiftEnhancer.createBuildTargetForSwiftCompile(target, cxxPlatform);
-    SwiftCompile compile = (SwiftCompile) graphBuilder.requireRule(swiftTarget);
-
-    return compile.getAstLinkArgs();
-  }
-
-  @Override
-  public boolean getShouldProduceLibraryArtifact(
-      BuildTarget target,
-      ActionGraphBuilder graphBuilder,
-      CxxPlatform cxxPlatform,
-      Linker.LinkableDepType type,
-      boolean forceLinkWhole) {
-    return targetContainsSwift(target, graphBuilder);
-  }
-
-  private FlavorDomain<AppleCxxPlatform> getAppleCxxPlatformDomain() {
-    AppleCxxPlatformsProvider appleCxxPlatformsProvider =
-        toolchainProvider.getByName(
-            AppleCxxPlatformsProvider.DEFAULT_NAME, AppleCxxPlatformsProvider.class);
-
-    return appleCxxPlatformsProvider.getAppleCxxPlatforms();
-  }
-
-  private CxxPlatformsProvider getCxxPlatformsProvider() {
-    return toolchainProvider.getByName(
-        CxxPlatformsProvider.DEFAULT_NAME, CxxPlatformsProvider.class);
   }
 }

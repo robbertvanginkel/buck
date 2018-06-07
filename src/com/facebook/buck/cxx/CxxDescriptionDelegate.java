@@ -29,12 +29,12 @@ import com.google.common.collect.ImmutableList;
 import java.util.Optional;
 
 /**
- * Defines a plugin interface for {@link com.facebook.buck.cxx.CxxLibraryDescription} so that its
- * behavior can be extended. This is usually useful for description that use {@link
- * com.facebook.buck.cxx.CxxLibraryDescription} as a delegate (e.g., {@link
- * com.facebook.buck.apple.AppleLibraryDescription}.
+ * Defines a plugin interface for {@link com.facebook.buck.cxx.CxxLibraryDescription} and {@link
+ * com.facebook.buck.cxx.CxxBinaryDescription} so that its behavior can be extended. This is usually
+ * useful for description that use {@link com.facebook.buck.cxx.CxxLibraryDescription} as a delegate
+ * (e.g., {@link com.facebook.buck.apple.AppleLibraryDescription}.
  */
-public interface CxxLibraryDescriptionDelegate {
+public interface CxxDescriptionDelegate {
   /**
    * Defines an additional preprocessor input for the public interface exposed by a target. The
    * returned input will be concatenated with {@link com.facebook.buck.cxx.CxxLibraryDescription}'s

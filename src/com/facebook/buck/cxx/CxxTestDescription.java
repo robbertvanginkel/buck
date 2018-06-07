@@ -177,7 +177,8 @@ public class CxxTestDescription
               args,
               getImplicitFrameworkDeps(args),
               flavoredStripStyle,
-              flavoredLinkerMapMode);
+              flavoredLinkerMapMode,
+              Optional.empty());
       return CxxCompilationDatabase.createCompilationDatabase(
           buildTarget, projectFilesystem, cxxLinkAndCompileRules.compileRules);
     }
@@ -208,7 +209,8 @@ public class CxxTestDescription
             args,
             getImplicitFrameworkDeps(args),
             flavoredStripStyle,
-            flavoredLinkerMapMode);
+            flavoredLinkerMapMode,
+            Optional.empty());
 
     // Construct the actual build params we'll use, notably with an added dependency on the
     // CxxLink rule above which builds the test binary.

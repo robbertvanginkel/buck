@@ -285,7 +285,8 @@ public class CGoLibrary extends NoopBuildRule {
             args.getPlatformLinkerFlags(),
             Optional.empty(),
             args.getIncludeDirs(),
-            args.getRawHeaders());
+            args.getRawHeaders(),
+            Optional.empty());
 
     return cxxLinkAndCompileRules.getBinaryRule();
   }

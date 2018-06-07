@@ -311,6 +311,7 @@ public class FakeAppleRuleDescriptions {
         createTestToolchainProviderForApplePlatform(DEFAULT_APPLE_CXX_PLATFORM_FLAVOR_DOMAIN),
         SWIFT_LIBRARY_DESCRIPTION,
         DEFAULT_BUCK_CONFIG.getView(AppleConfig.class),
+        DEFAULT_BUCK_CONFIG.getView(SwiftBuckConfig.class),
         cxxBinaryImplicitFlavors,
         cxxBinaryFactory,
         cxxBinaryMetadataFactory,

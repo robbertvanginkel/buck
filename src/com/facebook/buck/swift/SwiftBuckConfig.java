@@ -17,11 +17,12 @@
 package com.facebook.buck.swift;
 
 import com.facebook.buck.config.BuckConfig;
+import com.facebook.buck.config.ConfigView;
 import com.google.common.base.Splitter;
 import java.util.Optional;
 
 /** A Swift-specific "view" of BuckConfig. */
-public class SwiftBuckConfig {
+public class SwiftBuckConfig implements ConfigView<BuckConfig> {
   private static final String SECTION_NAME = "swift";
   public static final String COMPILER_FLAGS_NAME = "compiler_flags";
   public static final String VERSION_NAME = "version";
@@ -82,5 +83,10 @@ public class SwiftBuckConfig {
    */
   public boolean getProjectAddASTPaths() {
     return delegate.getBooleanValue(SECTION_NAME, PROJECT_ADD_AST_PATHS, false);
+  }
+
+  @Override
+  public BuckConfig getDelegate() {
+    return delegate;
   }
 }

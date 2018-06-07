@@ -87,7 +87,7 @@ public class CxxLibrary extends NoopBuildRuleWithDeclaredAndExtraDeps
   private final ImmutableSortedSet<BuildTarget> tests;
   private final boolean canBeAsset;
   private final boolean reexportAllHeaderDependencies;
-  private final Optional<CxxLibraryDescriptionDelegate> delegate;
+  private final Optional<CxxDescriptionDelegate> delegate;
   /**
    * Whether Native Linkable dependencies should be propagated for the purpose of computing objects
    * to link at link time. Setting this to false makes this library invisible to linking, so it and
@@ -124,7 +124,7 @@ public class CxxLibrary extends NoopBuildRuleWithDeclaredAndExtraDeps
       boolean canBeAsset,
       boolean propagateLinkables,
       boolean reexportAllHeaderDependencies,
-      Optional<CxxLibraryDescriptionDelegate> delegate) {
+      Optional<CxxDescriptionDelegate> delegate) {
     super(buildTarget, projectFilesystem, params);
     this.deps = deps;
     this.exportedDeps = exportedDeps;
@@ -189,9 +189,7 @@ public class CxxLibrary extends NoopBuildRuleWithDeclaredAndExtraDeps
     return publicHeaders;
   }
 
-  /**
-   * Returns public headers excluding contribution from any {@link CxxLibraryDescriptionDelegate}.
-   */
+  /** Returns public headers excluding contribution from any {@link CxxDescriptionDelegate}. */
   public CxxPreprocessorInput getPublicCxxPreprocessorInputExcludingDelegate(
       CxxPlatform cxxPlatform, ActionGraphBuilder graphBuilder) {
     return getCxxPreprocessorInput(cxxPlatform, HeaderVisibility.PUBLIC, graphBuilder);

@@ -64,7 +64,8 @@ public class CxxBinaryFactory {
       ActionGraphBuilder graphBuilder,
       CellPathResolver cellRoots,
       CxxBinaryDescriptionArg args,
-      ImmutableSortedSet<BuildTarget> extraCxxDeps) {
+      ImmutableSortedSet<BuildTarget> extraCxxDeps,
+      Optional<CxxDescriptionDelegate> delegate) {
 
     // We explicitly remove some flavors below from params to make sure rule
     // has the same output regardless if we will strip or not.
@@ -101,7 +102,8 @@ public class CxxBinaryFactory {
               args,
               ImmutableSet.of(),
               flavoredStripStyle,
-              flavoredLinkerMapMode);
+              flavoredLinkerMapMode,
+              delegate);
       return CxxCompilationDatabase.createCompilationDatabase(
           target, projectFilesystem, cxxLinkAndCompileRules.compileRules);
     }
@@ -146,7 +148,8 @@ public class CxxBinaryFactory {
             args,
             extraCxxDeps,
             flavoredStripStyle,
-            flavoredLinkerMapMode);
+            flavoredLinkerMapMode,
+            delegate);
 
     SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
 
@@ -184,6 +187,7 @@ public class CxxBinaryFactory {
         args.getFrameworks(),
         args.getTests(),
         target.withoutFlavors(cxxPlatforms.getFlavors()),
+        delegate,
         cxxBuckConfig.shouldCacheBinaries());
   }
 

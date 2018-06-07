@@ -16,6 +16,8 @@
 
 package com.facebook.buck.apple;
 
+import com.facebook.buck.apple.AppleBinaryDescription.AbstractAppleBinaryDescriptionArg;
+import com.facebook.buck.apple.AppleLibraryDescription.Type;
 import com.facebook.buck.apple.toolchain.AppleCxxPlatform;
 import com.facebook.buck.apple.toolchain.AppleCxxPlatformsProvider;
 import com.facebook.buck.apple.toolchain.ApplePlatform;
@@ -50,17 +52,21 @@ import com.facebook.buck.cxx.CxxBinaryFlavored;
 import com.facebook.buck.cxx.CxxBinaryImplicitFlavors;
 import com.facebook.buck.cxx.CxxBinaryMetadataFactory;
 import com.facebook.buck.cxx.CxxCompilationDatabase;
+import com.facebook.buck.cxx.CxxLibraryDescription.CommonArg;
+import com.facebook.buck.cxx.CxxPreprocessorInput;
 import com.facebook.buck.cxx.FrameworkDependencies;
 import com.facebook.buck.cxx.HasAppleDebugSymbolDeps;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatforms;
 import com.facebook.buck.cxx.toolchain.CxxPlatformsProvider;
+import com.facebook.buck.cxx.toolchain.HeaderVisibility;
 import com.facebook.buck.cxx.toolchain.LinkerMapMode;
 import com.facebook.buck.cxx.toolchain.StripStyle;
 import com.facebook.buck.file.WriteFile;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.model.BuildTargets;
 import com.facebook.buck.rules.macros.StringWithMacros;
+import com.facebook.buck.swift.SwiftBuckConfig;
 import com.facebook.buck.swift.SwiftLibraryDescription;
 import com.facebook.buck.toolchain.ToolchainProvider;
 import com.facebook.buck.util.types.Either;
@@ -78,6 +84,7 @@ import com.google.common.collect.Sets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.immutables.value.Value;
@@ -85,9 +92,11 @@ import org.immutables.value.Value;
 public class AppleBinaryDescription
     implements DescriptionWithTargetGraph<AppleBinaryDescriptionArg>,
         Flavored,
-        ImplicitDepsInferringDescription<AppleBinaryDescription.AbstractAppleBinaryDescriptionArg>,
+        ImplicitDepsInferringDescription<AbstractAppleBinaryDescriptionArg>,
         ImplicitFlavorsInferringDescription,
-        MetadataProvidingDescription<AppleBinaryDescriptionArg> {
+        MetadataProvidingDescription<AppleBinaryDescriptionArg>,
+        AppleNativeTargetCxxDescriptionDelegate,
+        AppleLibrarySwiftDelegate {
 
   public static final Flavor APP_FLAVOR = InternalFlavor.of("app");
   public static final Sets.SetView<Flavor> NON_DELEGATE_FLAVORS =
@@ -108,6 +117,7 @@ public class AppleBinaryDescription
   private final ToolchainProvider toolchainProvider;
   private final Optional<SwiftLibraryDescription> swiftDelegate;
   private final AppleConfig appleConfig;
+  private final SwiftBuckConfig swiftBuckConfig;
   private final CxxBinaryImplicitFlavors cxxBinaryImplicitFlavors;
   private final CxxBinaryFactory cxxBinaryFactory;
   private final CxxBinaryMetadataFactory cxxBinaryMetadataFactory;
@@ -117,14 +127,16 @@ public class AppleBinaryDescription
       ToolchainProvider toolchainProvider,
       SwiftLibraryDescription swiftDelegate,
       AppleConfig appleConfig,
+      SwiftBuckConfig swiftBuckConfig,
       CxxBinaryImplicitFlavors cxxBinaryImplicitFlavors,
       CxxBinaryFactory cxxBinaryFactory,
       CxxBinaryMetadataFactory cxxBinaryMetadataFactory,
       CxxBinaryFlavored cxxBinaryFlavored) {
     this.toolchainProvider = toolchainProvider;
     // TODO(T22135033): Make apple_binary not use a Swift delegate
-    this.swiftDelegate = Optional.of(swiftDelegate);
+    this.swiftDelegate = swiftDelegate == null ? Optional.empty() : Optional.empty();
     this.appleConfig = appleConfig;
+    this.swiftBuckConfig = swiftBuckConfig;
     this.cxxBinaryImplicitFlavors = cxxBinaryImplicitFlavors;
     this.cxxBinaryFactory = cxxBinaryFactory;
     this.cxxBinaryMetadataFactory = cxxBinaryMetadataFactory;
@@ -192,6 +204,20 @@ public class AppleBinaryDescription
       BuildTarget buildTarget,
       BuildRuleParams params,
       AppleBinaryDescriptionArg args) {
+    Optional<BuildRule> swiftRule =
+        createSwiftBuildRule(
+            buildTarget,
+            context.getProjectFilesystem(),
+            params,
+            context.getActionGraphBuilder(),
+            new SourcePathRuleFinder(context.getActionGraphBuilder()),
+            context.getCellPathResolver(),
+            args,
+            this);
+    if (swiftRule.isPresent()) {
+      return swiftRule.get();
+    }
+
     FlavorDomain<AppleCxxPlatform> appleCxxPlatformsFlavorDomain =
         getAppleCxxPlatformsFlavorDomain();
     if (buildTarget.getFlavors().contains(APP_FLAVOR)) {
@@ -533,7 +559,8 @@ public class AppleBinaryDescription
                 graphBuilder,
                 cellRoots,
                 delegateArg.build(),
-                extraCxxDeps);
+                extraCxxDeps,
+                Optional.of(this));
           }
         });
   }
@@ -589,6 +616,12 @@ public class AppleBinaryDescription
       AppleBinaryDescriptionArg args,
       Optional<ImmutableMap<BuildTarget, Version>> selectedVersions,
       Class<U> metadataClass) {
+    Optional<Map.Entry<Flavor, MetadataType>> metaType =
+        AppleNativeTargetCxxDescriptionDelegate.METADATA_TYPE.getFlavorAndValue(buildTarget);
+    if (metaType.isPresent()) {
+      return createSwiftMetadata(buildTarget, graphBuilder, args, metadataClass);
+    }
+
     if (!metadataClass.isAssignableFrom(FrameworkDependencies.class)) {
       CxxBinaryDescriptionArg.Builder delegateArg = CxxBinaryDescriptionArg.builder().from(args);
       AppleDescriptions.populateCxxBinaryDescriptionArg(
@@ -658,9 +691,90 @@ public class AppleBinaryDescription
     }
   }
 
-  private CxxPlatformsProvider getCxxPlatformsProvider() {
-    return toolchainProvider.getByName(
-        CxxPlatformsProvider.DEFAULT_NAME, CxxPlatformsProvider.class);
+  @Override
+  public ToolchainProvider toolchainProvider() {
+    return toolchainProvider;
+  }
+
+  public Optional<BuildRule> createSwiftBuildRule(
+      BuildTarget buildTarget,
+      ProjectFilesystem projectFilesystem,
+      BuildRuleParams params,
+      ActionGraphBuilder graphBuilder,
+      SourcePathRuleFinder ruleFinder,
+      CellPathResolver cellRoots,
+      AppleNativeTargetDescriptionArg args,
+      AppleLibrarySwiftDelegate swiftDelegate) {
+    Optional<Map.Entry<Flavor, Type>> maybeType =
+        AppleLibraryDescription.LIBRARY_TYPE.getFlavorAndValue(buildTarget);
+    return maybeType.flatMap(
+        type -> {
+          FlavorDomain<CxxPlatform> cxxPlatforms = getCxxPlatformsProvider().getCxxPlatforms();
+          if (type.getValue().equals(Type.SWIFT_EXPORTED_OBJC_GENERATED_HEADER)) {
+            CxxPlatform cxxPlatform =
+                cxxPlatforms.getValue(buildTarget).orElseThrow(IllegalArgumentException::new);
+
+            return Optional.of(
+                AppleLibraryDescriptionSwiftEnhancer.createObjCGeneratedHeaderBuildRule(
+                    buildTarget,
+                    projectFilesystem,
+                    ruleFinder,
+                    graphBuilder,
+                    cxxPlatform,
+                    HeaderVisibility.PUBLIC));
+          } else if (type.getValue().equals(Type.SWIFT_OBJC_GENERATED_HEADER)) {
+            CxxPlatform cxxPlatform =
+                cxxPlatforms.getValue(buildTarget).orElseThrow(IllegalArgumentException::new);
+
+            return Optional.of(
+                AppleLibraryDescriptionSwiftEnhancer.createObjCGeneratedHeaderBuildRule(
+                    buildTarget,
+                    projectFilesystem,
+                    ruleFinder,
+                    graphBuilder,
+                    cxxPlatform,
+                    HeaderVisibility.PRIVATE));
+          } else if (type.getValue().equals(Type.SWIFT_COMPILE)) {
+            CxxPlatform cxxPlatform =
+                cxxPlatforms.getValue(buildTarget).orElseThrow(IllegalArgumentException::new);
+
+            // TODO(mgd): Must handle 'default' platform
+            AppleCxxPlatform applePlatform =
+                getAppleCxxPlatformDomain()
+                    .getValue(buildTarget)
+                    .orElseThrow(IllegalArgumentException::new);
+
+            ImmutableSet<CxxPreprocessorInput> preprocessorInputs =
+                swiftDelegate.getPreprocessorInputForSwift(
+                    buildTarget, graphBuilder, cxxPlatform, args);
+
+            return Optional.of(
+                AppleLibraryDescriptionSwiftEnhancer.createSwiftCompileRule(
+                    buildTarget,
+                    cellRoots,
+                    graphBuilder,
+                    ruleFinder,
+                    params,
+                    args,
+                    projectFilesystem,
+                    cxxPlatform,
+                    applePlatform,
+                    swiftBuckConfig,
+                    preprocessorInputs));
+          }
+
+          return Optional.empty();
+        });
+  }
+
+  @Override
+  public ImmutableSet<CxxPreprocessorInput> getPreprocessorInputForSwift(
+      BuildTarget buildTarget,
+      ActionGraphBuilder graphBuilder,
+      CxxPlatform cxxPlatform,
+      CommonArg args) {
+    // TODO: query does not exist yet. Can't use objc headers in swift right now.
+    return ImmutableSet.of();
   }
 
   @BuckStyleImmutable

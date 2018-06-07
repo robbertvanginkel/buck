@@ -90,7 +90,8 @@ public class CxxBinaryDescription
         context.getActionGraphBuilder(),
         context.getCellPathResolver(),
         args,
-        ImmutableSortedSet.of());
+        ImmutableSortedSet.of(),
+        Optional.empty());
   }
 
   @Override
